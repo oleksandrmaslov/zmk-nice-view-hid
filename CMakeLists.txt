@@ -1,6 +1,8 @@
 if(CONFIG_NICE_VIEW_HID)
 
-  zephyr_library_sources(src/hid.c)
+  if(CONFIG_RAW_HID)
+    zephyr_library_sources(src/hid.c)
+  endif()
   zephyr_library_sources(src/custom_status_screen.c)
   zephyr_library_sources(src/widgets/bolt.c)
   zephyr_library_sources(src/widgets/util.c)

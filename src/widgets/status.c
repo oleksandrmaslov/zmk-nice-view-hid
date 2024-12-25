@@ -27,6 +27,15 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 enum layout { _EN = 0, _RU };
 
+enum widget_children {
+    WIDGET_TOP = 0,
+#ifdef CONFIG_RAW_HID
+    WIDGET_HID,
+#endif
+    WIDGET_OUTPUT,
+    WIDGET_LAYER,
+};
+
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 struct output_status_state {
@@ -49,7 +58,7 @@ struct battery_status_state {
 };
 
 static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 0);
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_TOP);
 
     lv_draw_label_dsc_t label_dsc;
     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
@@ -92,8 +101,9 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     rotate_canvas(canvas, cbuf);
 }
 
+#ifdef CONFIG_RAW_HID
 static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 1);
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_HID);
 
     lv_draw_rect_dsc_t rect_black_dsc;
     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
@@ -131,9 +141,10 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
 }
+#endif
 
 static void draw_output(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 2);
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_OUTPUT);
 
     lv_draw_rect_dsc_t rect_black_dsc;
     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
@@ -157,7 +168,7 @@ static void draw_output(lv_obj_t *widget, lv_color_t cbuf[], const struct status
 }
 
 static void draw_layer(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 3);
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_LAYER);
 
     lv_draw_rect_dsc_t rect_black_dsc;
     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
@@ -276,6 +287,8 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_status, struct layer_status_state, laye
 
 ZMK_SUBSCRIPTION(widget_layer_status, zmk_layer_state_changed);
 
+#ifdef CONFIG_RAW_HID
+
 static struct time_notification get_time(const zmk_event_t *eh) {
     struct time_notification *notification = as_time_notification(eh);
     if (notification) {
@@ -337,6 +350,8 @@ static void layout_update_cb(struct layout_notification layout) {
 ZMK_DISPLAY_WIDGET_LISTENER(widget_layout, struct layout_notification, layout_update_cb, get_layout)
 ZMK_SUBSCRIPTION(widget_layout, layout_notification);
 
+#endif
+
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     lv_obj_set_size(widget->obj, 160, 68);
@@ -345,9 +360,11 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->top_buf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
+#ifdef CONFIG_RAW_HID
     lv_obj_t *hid = lv_canvas_create(widget->obj);
     lv_obj_align(hid, LV_ALIGN_TOP_LEFT, 64, 0);
     lv_canvas_set_buffer(hid, widget->hid_buf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+#endif
 
     lv_obj_t *output = lv_canvas_create(widget->obj);
     lv_obj_align(output, LV_ALIGN_TOP_LEFT, -14, 0);
@@ -362,9 +379,11 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_battery_status_init();
     widget_output_status_init();
     widget_layer_status_init();
+#ifdef CONFIG_RAW_HID
     widget_time_init();
     widget_volume_init();
     widget_layout_init();
+#endif
 
     return 0;
 }
