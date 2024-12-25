@@ -30,8 +30,6 @@ struct status_state {
     uint8_t minute;
     uint8_t volume;
     uint8_t layout;
-#else
-    uint8_t wpm[10];
 #endif
 #else
     bool connected;

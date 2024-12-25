@@ -8,7 +8,6 @@ config NICE_VIEW_HID
     select LV_USE_CANVAS
     select LV_FONT_MONTSERRAT_18
     select LV_FONT_MONTSERRAT_22
-    select ZMK_WPM if !RAW_HID
     default n
 
 config NICE_VIEW_HID_INVERTED
