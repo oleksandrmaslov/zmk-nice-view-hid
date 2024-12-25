@@ -9,12 +9,15 @@ config NICE_VIEW_HID
     select LV_FONT_MONTSERRAT_18
     select LV_FONT_MONTSERRAT_22
 
-config NICE_VIEW_HID_INVERTED
-    bool "Invert widget colors"
+config NICE_VIEW_HID_TWO_PROFILES
+    bool "Limit displayed profiles to two"
 
 config NICE_VIEW_HID_LAYOUTS
     string "Comma-separated layout list"
     default "EN"
+
+config NICE_VIEW_HID_INVERTED
+    bool "Invert widget colors"
 
 config LV_DPI_DEF
     default 161

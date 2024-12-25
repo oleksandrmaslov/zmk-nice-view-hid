@@ -29,9 +29,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 enum widget_children {
     WIDGET_TOP = 0,
-#ifdef CONFIG_RAW_HID
     WIDGET_HID,
-#endif
     WIDGET_MIDDLE,
     WIDGET_BOTTOM,
 };
@@ -90,7 +88,6 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     rotate_canvas(canvas, cbuf);
 }
 
-#ifdef CONFIG_RAW_HID
 static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_HID);
 
@@ -106,6 +103,7 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     // Fill background
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
+#ifdef CONFIG_RAW_HID
     // Draw hid data
     char time[10] = {};
     sprintf(time, "%02i:%02i", state->hour, state->minute);
@@ -126,57 +124,47 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     }
 
     if (current_layout != NULL) {
-        sprintf(layout, current_layout);
+        sprintf(layout, "%s", current_layout);
     } else {
         sprintf(layout, "%i", state->layout);
     }
 
     lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, layout);
+#else
+    lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, "HID");
+    lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, "not");
+    lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, "found");
+#endif
 
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
 }
-#endif
 
 static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_MIDDLE);
 
     lv_draw_rect_dsc_t rect_black_dsc;
     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-#ifndef CONFIG_RAW_HID
     lv_draw_rect_dsc_t rect_white_dsc;
     init_rect_dsc(&rect_white_dsc, LVGL_FOREGROUND);
-#endif
     lv_draw_arc_dsc_t arc_dsc;
     init_arc_dsc(&arc_dsc, LVGL_FOREGROUND, 2);
-#ifndef CONFIG_RAW_HID
     lv_draw_arc_dsc_t arc_dsc_filled;
     init_arc_dsc(&arc_dsc_filled, LVGL_FOREGROUND, 9);
-#endif
     lv_draw_label_dsc_t label_dsc;
     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-#ifndef CONFIG_RAW_HID
     lv_draw_label_dsc_t label_dsc_black;
     init_label_dsc(&label_dsc_black, LVGL_BACKGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-#endif
 
     // Fill background
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
     // Draw circles
+#define ARC_OFFSET_Y 12
+#ifdef CONFIG_NICE_VIEW_HID_TWO_PROFILES
+    int circle_offsets[2][2] = {{17, 13 + ARC_OFFSET_Y}, {51, 13 + ARC_OFFSET_Y}};
 
-#ifdef CONFIG_RAW_HID
-    lv_canvas_draw_arc(canvas, 34, 14, 13, 0, 360, &arc_dsc);
-
-    char label[4];
-    snprintf(label, sizeof(label), "%i", state->active_profile_index + 1);
-    lv_canvas_draw_text(canvas, 26, 4, 16, &label_dsc, label);
-#else
-    int circle_offsets[5][2] = {
-        {13, 13}, {55, 13}, {34, 34}, {13, 55}, {55, 55},
-    };
-
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 2; i++) {
         bool selected = i == state->active_profile_index;
 
         lv_canvas_draw_arc(canvas, circle_offsets[i][0], circle_offsets[i][1], 13, 0, 360,
@@ -192,6 +180,12 @@ static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status
         lv_canvas_draw_text(canvas, circle_offsets[i][0] - 8, circle_offsets[i][1] - 10, 16,
                             (selected ? &label_dsc_black : &label_dsc), label);
     }
+#else
+    lv_canvas_draw_arc(canvas, 34, 13 + ARC_OFFSET_Y, 13, 0, 360, &arc_dsc);
+
+    char label[4];
+    snprintf(label, sizeof(label), "%i", state->active_profile_index + 1);
+    lv_canvas_draw_text(canvas, 26, 3 + ARC_OFFSET_Y, 16, &label_dsc, label);
 #endif
 
     // Rotate canvas
@@ -390,18 +384,12 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-#ifdef CONFIG_RAW_HID
     lv_obj_t *hid = lv_canvas_create(widget->obj);
     lv_obj_align(hid, LV_ALIGN_TOP_LEFT, 64, 0);
     lv_canvas_set_buffer(hid, widget->cbuf_hid, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
-#endif
 
     lv_obj_t *middle = lv_canvas_create(widget->obj);
-#ifdef CONFIG_RAW_HID
-    lv_obj_align(middle, LV_ALIGN_TOP_LEFT, -14, 0);
-#else
-    lv_obj_align(middle, LV_ALIGN_TOP_LEFT, 24, 0);
-#endif
+    lv_obj_align(middle, LV_ALIGN_TOP_LEFT, -4, 0);
     lv_canvas_set_buffer(middle, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
     lv_obj_t *bottom = lv_canvas_create(widget->obj);
@@ -416,6 +404,8 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_time_init();
     widget_volume_init();
     widget_layout_init();
+#else
+    draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
 #endif
 
     return 0;
