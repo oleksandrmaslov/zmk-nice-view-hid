@@ -12,10 +12,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/battery.h>
 #include <zmk/display.h>
-#include <nice_view_hid/status.h>
-#ifdef CONFIG_RAW_HID
-#include <nice_view_hid/hid.h>
-#endif
+#include "status.h"
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
@@ -26,6 +23,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/ble.h>
 #include <zmk/endpoints.h>
 #include <zmk/keymap.h>
+#ifdef CONFIG_RAW_HID
+#include <nice_view_hid/hid.h>
+#endif
 
 enum widget_children {
     WIDGET_TOP = 0,

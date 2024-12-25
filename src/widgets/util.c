@@ -6,7 +6,7 @@
  */
 
 #include <zephyr/kernel.h>
-#include <nice_view_hid/util.h>
+#include "util.h"
 
 LV_IMG_DECLARE(bolt);
 
