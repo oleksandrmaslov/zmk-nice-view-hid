@@ -1,3 +1,6 @@
+name: zmk-nice-view-hid
 build:
+  cmake: .
+  kconfig: Kconfig
   settings:
     board_root: .
