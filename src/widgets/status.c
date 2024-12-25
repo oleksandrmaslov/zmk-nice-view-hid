@@ -36,10 +36,6 @@ enum widget_children {
     WIDGET_BOTTOM,
 };
 
-#ifdef CONFIG_RAW_HID
-enum layout { _EN = 0, _RU };
-#endif
-
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 struct output_status_state {
@@ -115,20 +111,26 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     sprintf(time, "%02i:%02i", state->hour, state->minute);
     lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, time);
 
-    char volume[9] = {};
+    char volume[10] = {};
     sprintf(volume, "vol: %i", state->volume);
     lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, volume);
 
-    char layout[3] = {};
-    switch (state->layout) {
-    case _EN:
-        sprintf(layout, "EN");
-        break;
-
-    case _RU:
-        sprintf(layout, "RU");
-        break;
+    char layout[10] = {};
+    char layouts[sizeof(CONFIG_NICE_VIEW_HID_LAYOUTS)];
+    strcpy(layouts, CONFIG_NICE_VIEW_HID_LAYOUTS);
+    char *current_layout = strtok(layouts, ",");
+    size_t i = 0;
+    while (current_layout != NULL && i < state->layout) {
+        i++;
+        current_layout = strtok(NULL, ",");
     }
+
+    if (current_layout != NULL) {
+        sprintf(layout, current_layout);
+    } else {
+        sprintf(layout, "%i", state->layout);
+    }
+
     lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, layout);
 
     // Rotate canvas
