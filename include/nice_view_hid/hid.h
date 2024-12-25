@@ -2,6 +2,12 @@
 
 #include <zmk/event_manager.h>
 
+struct is_connected_notification {
+    bool value;
+};
+
+ZMK_EVENT_DECLARE(is_connected_notification);
+
 struct time_notification {
     uint8_t hour;
     uint8_t minute;

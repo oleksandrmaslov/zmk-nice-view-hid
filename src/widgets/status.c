@@ -104,37 +104,40 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
 #ifdef CONFIG_RAW_HID
-    // Draw hid data
-    char time[10] = {};
-    sprintf(time, "%02i:%02i", state->hour, state->minute);
-    lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, time);
+    if (state->is_connected) {
+        // Draw hid data
+        char time[10] = {};
+        sprintf(time, "%02i:%02i", state->hour, state->minute);
+        lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, time);
 
-    char volume[10] = {};
-    sprintf(volume, "vol: %i", state->volume);
-    lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, volume);
+        char volume[10] = {};
+        sprintf(volume, "vol: %i", state->volume);
+        lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, volume);
 
-    char layout[10] = {};
-    char layouts[sizeof(CONFIG_NICE_VIEW_HID_LAYOUTS)];
-    strcpy(layouts, CONFIG_NICE_VIEW_HID_LAYOUTS);
-    char *current_layout = strtok(layouts, ",");
-    size_t i = 0;
-    while (current_layout != NULL && i < state->layout) {
-        i++;
-        current_layout = strtok(NULL, ",");
-    }
+        char layout[10] = {};
+        char layouts[sizeof(CONFIG_NICE_VIEW_HID_LAYOUTS)];
+        strcpy(layouts, CONFIG_NICE_VIEW_HID_LAYOUTS);
+        char *current_layout = strtok(layouts, ",");
+        size_t i = 0;
+        while (current_layout != NULL && i < state->layout) {
+            i++;
+            current_layout = strtok(NULL, ",");
+        }
 
-    if (current_layout != NULL) {
-        sprintf(layout, "%s", current_layout);
-    } else {
-        sprintf(layout, "%i", state->layout);
-    }
+        if (current_layout != NULL) {
+            sprintf(layout, "%s", current_layout);
+        } else {
+            sprintf(layout, "%i", state->layout);
+        }
 
-    lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, layout);
-#else
-    lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, "HID");
-    lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, "not");
-    lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, "found");
+        lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, layout);
+    } else
 #endif
+    {
+        lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, "HID");
+        lv_canvas_draw_text(canvas, 0, 27, 68, &label_volume, "not");
+        lv_canvas_draw_text(canvas, 0, 50, 68, &label_layout, "found");
+    }
 
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
@@ -314,6 +317,27 @@ ZMK_SUBSCRIPTION(widget_layer_status, zmk_layer_state_changed);
 
 #ifdef CONFIG_RAW_HID
 
+static struct is_connected_notification get_is_hid_connected(const zmk_event_t *eh) {
+    struct is_connected_notification *notification = as_is_connected_notification(eh);
+    if (notification) {
+        return *notification;
+    }
+    return (struct is_connected_notification){.value = false};
+}
+
+static void is_hid_connected_update_cb(struct is_connected_notification is_connected) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        widget->state.is_connected = is_connected.value;
+
+        draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
+    }
+}
+
+ZMK_DISPLAY_WIDGET_LISTENER(widget_is_connected, struct is_connected_notification,
+                            is_hid_connected_update_cb, get_is_hid_connected)
+ZMK_SUBSCRIPTION(widget_is_connected, is_connected_notification);
+
 static struct time_notification get_time(const zmk_event_t *eh) {
     struct time_notification *notification = as_time_notification(eh);
     if (notification) {
@@ -401,6 +425,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_output_status_init();
     widget_layer_status_init();
 #ifdef CONFIG_RAW_HID
+    widget_is_connected_init();
     widget_time_init();
     widget_volume_init();
     widget_layout_init();
