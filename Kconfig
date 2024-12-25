@@ -12,6 +12,10 @@ config NICE_VIEW_HID
 config NICE_VIEW_HID_TWO_PROFILES
     bool "Limit displayed profiles to two"
 
+config NICE_VIEW_HID_SHOW_LAYOUT
+    bool "Show layout"
+    default y
+
 config NICE_VIEW_HID_LAYOUTS
     string "Comma-separated layout list"
     default "EN"
