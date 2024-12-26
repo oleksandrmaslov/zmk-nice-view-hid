@@ -1,4 +1,5 @@
 #include <nice_view_hid/hid.h>
+#include <raw_hid/events.h>
 
 #include <zephyr/kernel.h>
 
@@ -42,7 +43,7 @@ static void on_volume_timer(struct k_timer *dummy) {
 
 K_TIMER_DEFINE(volume_timer, on_volume_timer, NULL);
 
-void process_raw_hid_data(uint8_t *data) {
+static void process_raw_hid_data(uint8_t *data) {
     LOG_INF("display_process_raw_hid_data - received data_type %u", data[0]);
 
     // raise disconnect notification after 65 seconds of inactivity
@@ -77,3 +78,15 @@ void process_raw_hid_data(uint8_t *data) {
 #endif
     }
 }
+
+static int raw_hid_received_event_listener(const zmk_event_t *eh) {
+    struct raw_hid_received_event *event = as_raw_hid_received_event(eh);
+    if (event) {
+        process_raw_hid_data(event->data);
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(process_raw_hid_event, raw_hid_received_event_listener);
+ZMK_SUBSCRIPTION(process_raw_hid_event, raw_hid_received_event);
