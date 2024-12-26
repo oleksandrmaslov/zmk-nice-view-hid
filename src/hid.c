@@ -42,8 +42,8 @@ static void on_volume_timer(struct k_timer *dummy) {
 
 K_TIMER_DEFINE(volume_timer, on_volume_timer, NULL);
 
-void process_raw_hid_data(uint8_t *data, uint8_t length) {
-    LOG_INF("display_process_raw_hid_data - received length %u, data_type %u", length, data[0]);
+void process_raw_hid_data(uint8_t *data) {
+    LOG_INF("display_process_raw_hid_data - received data_type %u", data[0]);
 
     // raise disconnect notification after 65 seconds of inactivity
     k_timer_start(&disconnect_timer, K_SECONDS(65), K_NO_WAIT);
