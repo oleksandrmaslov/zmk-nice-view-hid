@@ -9,14 +9,18 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 ZMK_EVENT_IMPL(is_connected_notification);
 ZMK_EVENT_IMPL(time_notification);
 ZMK_EVENT_IMPL(volume_notification);
+ZMK_EVENT_IMPL(media_title_notification);
+ZMK_EVENT_IMPL(media_artist_notification);
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
 ZMK_EVENT_IMPL(layout_notification);
 #endif
 
 typedef enum {
-    _TIME = 0xAA, // random value, must match companion app
+    _TIME = 0xAA,
     _VOLUME,
     _LAYOUT,
+    _MEDIA_ARTIST = 0xAD,
+    _MEDIA_TITLE,
 } hid_data_type;
 
 static bool is_connected = false;
@@ -70,6 +74,25 @@ static void process_raw_hid_data(uint8_t *data) {
         }
 
         break;
+
+    case _MEDIA_ARTIST: {
+        uint8_t len = data[1];
+        if (len > 31) len = 31;
+        struct media_artist_notification notif = {.artist = {0}};
+        memcpy(notif.artist, data + 2, len);
+        notif.artist[len] = '\0';
+        raise_media_artist_notification(notif);
+        break;
+    }
+    case _MEDIA_TITLE: {
+        uint8_t len = data[1];
+        if (len > 31) len = 31;
+        struct media_title_notification notif = {.title = {0}};
+        memcpy(notif.title, data + 2, len);
+        notif.title[len] = '\0';
+        raise_media_title_notification(notif);
+        break;
+    }
 
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     case _LAYOUT:
