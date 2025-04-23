@@ -8,8 +8,8 @@ manifest:
       url-base: https://github.com/oleksandrmaslov
   projects:
     - name: zmk
-      remote: zmkfirmware
-      revision: main
+      remote: oleksandrmaslov
+      revision: raw-hid
       import: app/west.yml
     - name: zmk-raw-hid
       remote: oleksandrmaslov
