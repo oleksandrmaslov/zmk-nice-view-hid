@@ -31,6 +31,8 @@ struct status_state {
     uint8_t minute;
     uint8_t volume;
     uint8_t layout;
+    char track_title[32];
+    char track_artist[32];
 #endif
 #else
     bool connected;
