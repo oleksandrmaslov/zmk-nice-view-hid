@@ -15,10 +15,6 @@ if(CONFIG_NICE_VIEW_HID)
     zephyr_library_sources(src/widgets/peripheral_status.c)
   endif()
 
-  if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    zephyr_library_sources(src/now_playing_forward.c)
-  endif()
-
   zephyr_include_directories(include)
   zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)
 
