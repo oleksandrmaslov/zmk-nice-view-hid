@@ -1,3 +1,4 @@
+manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
@@ -15,4 +16,3 @@
       revision: main
   self:
     path: config
-
