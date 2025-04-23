@@ -23,9 +23,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
-// LV_IMG_DECLARE(balloon);
-// LV_IMG_DECLARE(mountain);
-
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 struct peripheral_status_state {
@@ -107,6 +104,57 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_peripheral_status, struct peripheral_status_s
                             output_status_update_cb, get_state)
 ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed);
 
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+static void title_update_cb(struct media_title_notification notif) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        strncpy(widget->state.track_title, notif.title, sizeof(widget->state.track_title));
+        widget->state.track_title[sizeof(widget->state.track_title)-1] = '\0';
+        if (widget->state.track_title[0] == '\0') {
+            lv_label_set_text(widget->label_track, "No media");
+            lv_label_set_text(widget->label_artist, "");
+        } else {
+            lv_label_set_text(widget->label_track, widget->state.track_title);
+        }
+    }
+}
+
+static void artist_update_cb(struct media_artist_notification notif) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        if (widget->state.track_title[0] != '\0') {
+            strncpy(widget->state.track_artist, notif.artist, sizeof(widget->state.track_artist));
+            widget->state.track_artist[sizeof(widget->state.track_artist)-1] = '\0';
+            lv_label_set_text(widget->label_artist, widget->state.track_artist);
+        }
+    }
+}
+
+static void media_conn_update_cb(struct is_connected_notification conn) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        if (!conn.value) {
+            widget->state.track_title[0] = '\0';
+            widget->state.track_artist[0] = '\0';
+            lv_label_set_text(widget->label_track, "No media");
+            lv_label_set_text(widget->label_artist, "");
+        }
+    }
+}
+
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title,
+    struct media_title_notification, title_update_cb, as_media_title_notification)
+ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
+
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist,
+    struct media_artist_notification, artist_update_cb, as_media_artist_notification)
+ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
+
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn,
+    struct is_connected_notification, media_conn_update_cb, get_is_hid_connected)
+ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
+#endif
+
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     lv_obj_set_size(widget->obj, 160, 68);
@@ -114,7 +162,29 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-    // Removed art image creation and random selection
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Now Playing header
+    widget->label_now = lv_label_create(widget->obj);
+    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
+    lv_label_set_text_static(widget->label_now, "Now Playing");
+    lv_obj_set_pos(widget->label_now, 0, 20);
+
+    // Track title (scrolling)
+    widget->label_track = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_track, 160);
+    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, 0);
+    lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(widget->label_track, "No media");
+    lv_obj_set_pos(widget->label_track, 0, 36);
+
+    // Artist name
+    widget->label_artist = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_artist, 160);
+    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, 0);
+    lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
+    lv_label_set_text(widget->label_artist, "");
+    lv_obj_set_pos(widget->label_artist, 0, 58);
+#endif
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
