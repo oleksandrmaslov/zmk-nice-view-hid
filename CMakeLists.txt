@@ -13,10 +13,6 @@ if(CONFIG_NICE_VIEW_HID)
   else()
     zephyr_library_sources(src/widgets/art.c)
     zephyr_library_sources(src/widgets/peripheral_status.c)
-  +  # only pull in the default art when media‐widget is disabled
-  if(NOT CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    zephyr_library_sources(src/widgets/art.c)
-    zephyr_library_sources(src/widgets/peripheral_status.c)
   endif()
 
   zephyr_include_directories(include)
