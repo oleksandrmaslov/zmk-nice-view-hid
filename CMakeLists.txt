@@ -10,9 +10,6 @@ if(CONFIG_NICE_VIEW_HID)
 
 if(NOT CONFIG_ZMK_SPLIT OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   zephyr_library_sources(src/widgets/status.c)
-elseif(NOT CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-  zephyr_library_sources(src/widgets/art.c)
-  zephyr_library_sources(src/widgets/peripheral_status.c)
 endif()
 
   zephyr_include_directories(include)
