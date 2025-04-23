@@ -6,6 +6,7 @@ config NICE_VIEW_HID
     imply ZMK_DISPLAY
     select LV_USE_IMG
     select LV_USE_CANVAS
+    select LV_FONT_MONTSERRAT_12
     select LV_FONT_MONTSERRAT_18
     select LV_FONT_MONTSERRAT_22
 
@@ -46,3 +47,12 @@ endchoice
 choice ZMK_DISPLAY_STATUS_SCREEN
     default ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
 endchoice
+
+config NICE_VIEW_HID_MEDIA_INFO
+    bool "Enable Now Playing media widget"
+    depends on NICE_VIEW_HID && RAW_HID
+    default y
+    help
+      When enabled, draws a "Now Playing" header, scrolling track title,
+      and artist name on the nice!view display using Raw-HID media packets
+      from the host. Disable to restore the stock volume/layout widgets.
