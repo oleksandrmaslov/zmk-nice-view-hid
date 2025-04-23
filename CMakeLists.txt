@@ -19,3 +19,10 @@ if(CONFIG_NICE_VIEW_HID)
   zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)
 
 endif()
+
+zmk_library_named(raw_hid)
+zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ROLE_CENTRAL src/now_playing_forward.c)
+zephyr_library_sources(
+    src/hid.c
+    src/raw_hid.c
+)
