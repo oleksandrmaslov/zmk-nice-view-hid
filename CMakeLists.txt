@@ -13,11 +13,12 @@ if(CONFIG_NICE_VIEW_HID)
   else()
     zephyr_library_sources(src/widgets/art.c)
     zephyr_library_sources(src/widgets/peripheral_status.c)
+  endif()
   if(NOT CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     zephyr_library_sources(src/widgets/art.c)
     zephyr_library_sources(src/widgets/peripheral_status.c)
   endif()
-
+  
   zephyr_include_directories(include)
   zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)
 
