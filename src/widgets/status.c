@@ -531,6 +531,9 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     widget_layout_init();
 #endif
+    widget_media_title_init();
+    widget_media_artist_init();
+    widget_media_conn_init();
 #else
     draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
 #endif
