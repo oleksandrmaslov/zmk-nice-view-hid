@@ -27,6 +27,16 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <nice_view_hid/hid.h>
 #endif
 
+// Media widget only on PERIPHERAL
+#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+#define NOWPLAY_Y_OFFSET 20
+#define NOWPLAY_SCROLL_SPEED 10 //scroll speed in px/s
+// forward declarations
+static void title_update_cb(struct media_title_notification notif);
+static void artist_update_cb(struct media_artist_notification notif);
+static void media_conn_update_cb(struct is_connected_notification conn);
+#endif
+
 enum widget_children {
     WIDGET_TOP = 0,
     WIDGET_HID,
@@ -133,7 +143,9 @@ static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
 
         char volume[10] = {};
         sprintf(volume, "vol: %i", state->volume);
-#ifndef CONFIG_NICE_VIEW_HID_MEDIA_INFO
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+// skip drawing volume when media is shown
+#else
         lv_canvas_draw_text(canvas, 0, 50 - TEXT_OFFSET_Y, 68, &label_volume, volume);
 #endif
     } else
@@ -211,7 +223,9 @@ static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     // Fill background
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
-#ifndef CONFIG_NICE_VIEW_HID_MEDIA_INFO
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+// skip drawing layer when media is shown
+#else
     // Draw layer
     if (state->layer_label == NULL || strlen(state->layer_label) == 0) {
         char text[10] = {};
@@ -408,6 +422,7 @@ ZMK_SUBSCRIPTION(widget_layout, layout_notification);
 
 #endif
 
+#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
 static struct media_title_notification get_title_notif(const zmk_event_t *eh) {
     struct media_title_notification *ev = as_media_title_notification(eh);
     return ev ? *ev : (struct media_title_notification){ .title = "" };
@@ -419,7 +434,6 @@ static void title_update_cb(struct media_title_notification notif) {
         strncpy(widget->state.track_title, notif.title, sizeof(widget->state.track_title));
         widget->state.track_title[sizeof(widget->state.track_title)-1] = '\0';
         if (widget->state.track_title[0] == '\0') {
-            // No title -> no media
             lv_label_set_text(widget->label_track, "No media");
             lv_label_set_text(widget->label_artist, "");
         } else {
@@ -437,7 +451,6 @@ static void artist_update_cb(struct media_artist_notification notif) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         if (widget->state.track_title[0] != '\0') {
-            // Only update artist if a track title is set
             strncpy(widget->state.track_artist, notif.artist, sizeof(widget->state.track_artist));
             widget->state.track_artist[sizeof(widget->state.track_artist)-1] = '\0';
             lv_label_set_text(widget->label_artist, widget->state.track_artist);
@@ -449,7 +462,6 @@ static void media_conn_update_cb(struct is_connected_notification conn) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         if (!conn.value) {
-            // Host disconnected -> clear media info
             widget->state.track_title[0] = '\0';
             widget->state.track_artist[0] = '\0';
             lv_label_set_text(widget->label_track, "No media");
@@ -470,8 +482,9 @@ ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn, struct is_connected_notification,
                              media_conn_update_cb, get_is_hid_connected)
 ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
+#endif // peripheral media widget
 
-#endif
+#endif // CONFIG_RAW_HID
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
@@ -496,28 +509,29 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     // Ensure state is zero-initialized (no stale data)
     memset(&widget->state, 0, sizeof(widget->state));
 
-#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    // "Now Playing" label (small font)
+#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Now Playing header
     widget->label_now = lv_label_create(widget->obj);
-    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
     lv_label_set_text_static(widget->label_now, "Now Playing");
-    lv_obj_set_pos(widget->label_now, 0, 32);
+    lv_obj_set_pos(widget->label_now, 0, NOWPLAY_Y_OFFSET);
 
-    // Track title label (default font 18, full width, scrolling)
+    // Track title (scrolling)
     widget->label_track = lv_label_create(widget->obj);
     lv_obj_set_width(widget->label_track, 160);
-    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, 0);
     lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_anim_speed(widget->label_track, NOWPLAY_SCROLL_SPEED, 0);
     lv_label_set_text(widget->label_track, "No media");
-    lv_obj_set_pos(widget->label_track, 0, 44);
+    lv_obj_set_pos(widget->label_track, 0, NOWPLAY_Y_OFFSET + 12 + 4);
 
-    // Artist name label (small font, full width, dot truncation)
+    // Artist name
     widget->label_artist = lv_label_create(widget->obj);
     lv_obj_set_width(widget->label_artist, 160);
-    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, 0);
     lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
     lv_label_set_text(widget->label_artist, "");
-    lv_obj_set_pos(widget->label_artist, 0, 56);
+    lv_obj_set_pos(widget->label_artist, 0, NOWPLAY_Y_OFFSET + 12 + 4 + 18 + 2);
 #endif
 
     sys_slist_append(&widgets, &widget->node);
@@ -531,9 +545,11 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     widget_layout_init();
 #endif
+#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     widget_media_title_init();
     widget_media_artist_init();
     widget_media_conn_init();
+#endif
 #else
     draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
 #endif
