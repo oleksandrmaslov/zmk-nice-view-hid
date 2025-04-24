@@ -4,31 +4,27 @@
  * SPDX-License-Identifier: MIT
  *
  */
-#include <zephyr/kernel.h>
 
+#include <zephyr/kernel.h>
+#include <zephyr/random/random.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/battery.h>
 #include <zmk/display.h>
-#include "status.h"
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
-#include <zmk/events/ble_active_profile_changed.h>
-#include <zmk/events/endpoint_changed.h>
-#include <zmk/events/layer_state_changed.h>
+#include <zmk/split/bluetooth/peripheral.h>
+#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/usb.h>
 #include <zmk/ble.h>
-#include <zmk/endpoints.h>
-#include <zmk/keymap.h>
-#ifdef CONFIG_RAW_HID
-#include <nice_view_hid/hid.h>
-#endif
 
-#if defined(CONFIG_RAW_HID) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-#include <raw_hid/events.h>               // as_media_title_notification, etc.
-#include <nice_view_hid/media_events.h>   // struct media_title_notification
+#include "peripheral_status.h"
+
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+#include <raw_hid/events.h>
+#include <nice_view_hid/media_events.h>
 #endif
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
@@ -56,7 +52,7 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct periphera
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
     // Draw battery
-    draw_battery(canvas, state);
+    draw_battery(canvas, (const struct status_state *)state);
 
     // Draw output status
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
