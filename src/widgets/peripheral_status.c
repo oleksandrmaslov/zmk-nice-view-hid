@@ -59,7 +59,7 @@ static struct battery_status_state battery_status_get_state(const zmk_event_t *e
 #endif
     };
 }
-}
+
 static void battery_status_update_cb(struct battery_status_state bs) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
