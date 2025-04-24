@@ -58,6 +58,10 @@ struct layer_status_state {
     const char *label;
 };
 
+#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
+// ---- All draw_* and set_* functions and their update callbacks ----
+
 static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_TOP);
 
@@ -244,10 +248,8 @@ static void set_battery_status(struct zmk_widget_status *widget,
                                struct battery_status_state state) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     widget->state.charging = state.usb_present;
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
-
+#endif
     widget->state.battery = state.level;
-
     draw_top(widget->obj, widget->cbuf, &widget->state);
 }
 
@@ -314,7 +316,6 @@ ZMK_SUBSCRIPTION(widget_output_status, zmk_ble_active_profile_changed);
 static void set_layer_status(struct zmk_widget_status *widget, struct layer_status_state state) {
     widget->state.layer_index = state.index;
     widget->state.layer_label = state.label;
-
     draw_bottom(widget->obj, widget->cbuf3, &widget->state);
 }
 
@@ -486,6 +487,8 @@ ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
 
 #endif // CONFIG_RAW_HID
 
+#endif // !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     lv_obj_set_size(widget->obj, 160, 68);
@@ -509,7 +512,21 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     // Ensure state is zero-initialized (no stale data)
     memset(&widget->state, 0, sizeof(widget->state));
 
-#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Only register the old listeners when not in media-info mode
+    widget_battery_status_init();
+    widget_output_status_init();
+    widget_layer_status_init();
+#ifdef CONFIG_RAW_HID
+    widget_is_connected_init();
+    widget_time_init();
+    widget_volume_init();
+#ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
+    widget_layout_init();
+#endif
+#endif // !CONFIG_NICE_VIEW_HID_MEDIA_INFO
+
+#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     // Now Playing header
     widget->label_now = lv_label_create(widget->obj);
     lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
@@ -532,25 +549,17 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
     lv_label_set_text(widget->label_artist, "");
     lv_obj_set_pos(widget->label_artist, 0, NOWPLAY_Y_OFFSET + 12 + 4 + 18 + 2);
-#endif
 
-    sys_slist_append(&widgets, &widget->node);
-    widget_battery_status_init();
-    widget_output_status_init();
-    widget_layer_status_init();
-#ifdef CONFIG_RAW_HID
-    widget_is_connected_init();
-    widget_time_init();
-    widget_volume_init();
-#ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
-    widget_layout_init();
-#endif
-#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Register your media listeners
     widget_media_title_init();
     widget_media_artist_init();
     widget_media_conn_init();
 #endif
-#else
+
+    sys_slist_append(&widgets, &widget->node);
+
+#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Draw the normal widgets on init if not in media mode
     draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
 #endif
 
