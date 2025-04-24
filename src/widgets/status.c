@@ -519,37 +519,14 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(bottom, LV_ALIGN_TOP_LEFT, -44, 0);
     lv_canvas_set_buffer(bottom, widget->cbuf3, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
+
+    /* Zero-initialize widget state to avoid stale data */
+    memset(&widget->state, 0, sizeof(widget->state));
+    // Ensure state is zero-initialized (no stale data)
     memset(&widget->state, 0, sizeof(widget->state));
 
-#if defined(CONFIG_RAW_HID) && \
-    !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && \
-    defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    // ─── Media mode on peripheral: build Now Playing UI ───
-    widget->label_now = lv_label_create(widget->obj);
-    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
-    lv_label_set_text_static(widget->label_now, "Now Playing");
-    lv_obj_set_pos(widget->label_now, 0, NOWPLAY_Y_OFFSET);
-
-    widget->label_track = lv_label_create(widget->obj);
-    lv_obj_set_width(widget->label_track, 160);
-    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, 0);
-    lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_anim_speed(widget->label_track, NOWPLAY_SCROLL_SPEED, 0);
-    lv_label_set_text(widget->label_track, "No media");
-    lv_obj_set_pos(widget->label_track, 0, NOWPLAY_Y_OFFSET + 12 + 4);
-
-    widget->label_artist = lv_label_create(widget->obj);
-    lv_obj_set_width(widget->label_artist, 160);
-    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, 0);
-    lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
-    lv_label_set_text(widget->label_artist, "");
-    lv_obj_set_pos(widget->label_artist, 0, NOWPLAY_Y_OFFSET + 12 + 4 + 18 + 2);
-
-    widget_media_title_init();
-    widget_media_artist_init();
-    widget_media_conn_init();
-#else
-    // ─── Default status listeners ───
+    /* ─── when NOT in media‐mode, register the old status listeners ─── */
+#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO) || defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     widget_battery_status_init();
     widget_output_status_init();
     widget_layer_status_init();
@@ -561,9 +538,44 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_layout_init();
 #endif
 #endif
-#endif
+#endif  /* end old‐status listeners */
+
+    /* ─── when in media‐mode ON the peripheral, build the Now Playing UI ─── */
+#if defined(CONFIG_RAW_HID) && \
+    !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && \
+    defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
+    // Now Playing header
+    widget->label_now = lv_label_create(widget->obj);
+    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
+    lv_label_set_text_static(widget->label_now, "Now Playing");
+    lv_obj_set_pos(widget->label_now, 0, NOWPLAY_Y_OFFSET);
+
+    // Track title (scrolling)
+    widget->label_track = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_track, 160);
+    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, 0);
+    lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_anim_speed(widget->label_track, NOWPLAY_SCROLL_SPEED, 0);
+    lv_label_set_text(widget->label_track, "No media");
+    lv_obj_set_pos(widget->label_track, 0, NOWPLAY_Y_OFFSET + 12 + 4);
+
+    // Artist name
+    widget->label_artist = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_artist, 160);
+    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, 0);
+    lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
+    lv_label_set_text(widget->label_artist, "");
+    lv_obj_set_pos(widget->label_artist, 0, NOWPLAY_Y_OFFSET + 12 + 4 + 18 + 2);
+
+    // Register the callbacks we forward-declared above
+    widget_media_title_init();
+    widget_media_artist_init();
+    widget_media_conn_init();
+#endif /* peripheral media widget */
 
     sys_slist_append(&widgets, &widget->node);
+
     return 0;
 }
 
