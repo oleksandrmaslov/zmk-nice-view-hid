@@ -49,8 +49,6 @@ endchoice
 
 config NICE_VIEW_HID_MEDIA_INFO
     bool "Enable Now Playing media widget"
-    depends on NICE_VIEW_HID && RAW_HID
-    default y
     help
       When enabled, draws a "Now Playing" header, scrolling track title,
       and artist name on the nice!view display using Raw-HID media packets
