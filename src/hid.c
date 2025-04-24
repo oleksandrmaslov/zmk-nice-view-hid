@@ -49,7 +49,26 @@ K_TIMER_DEFINE(volume_timer, on_volume_timer, NULL);
 
 static void process_raw_hid_data(uint8_t *data) {
     LOG_INF("display_process_raw_hid_data - received data_type %u", data[0]);
-
+/* In process_raw_hid_data (hid.c): handle new cases */
+case _MEDIA_ARTIST: {
+    uint8_t len = data[1];
+    if (len > 31) len = 31;
+    struct media_artist_notification notif = {.artist = {0}};
+    memcpy(notif.artist, data + 2, len);
+    notif.artist[len] = '\0';
+    raise_media_artist_notification(notif);
+    break;
+}
+case _MEDIA_TITLE: {
+    uint8_t len = data[1];
+    if (len > 31) len = 31;
+    struct media_title_notification notif = {.title = {0}};
+    memcpy(notif.title, data + 2, len);
+    notif.title[len] = '\0';
+    raise_media_title_notification(notif);
+    break;
+}
+    
     // raise disconnect notification after 65 seconds of inactivity
     k_timer_start(&disconnect_timer, K_SECONDS(65), K_NO_WAIT);
     if (!is_connected) {
