@@ -27,15 +27,25 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <nice_view_hid/hid.h>
 #endif
 
+#if defined(CONFIG_RAW_HID) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+#include <raw_hid/events.h>               // as_media_title_notification, etc.
+#include <nice_view_hid/media_events.h>   // struct media_title_notification
+#endif
+
 // Media widget only on PERIPHERAL
-#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-#define NOWPLAY_Y_OFFSET 20
-#define NOWPLAY_SCROLL_SPEED 10 //scroll speed in px/s
-// forward declarations
+#if defined(CONFIG_RAW_HID) && \
+    !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && \
+    defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
+#define NOWPLAY_Y_OFFSET      20
+#define NOWPLAY_SCROLL_SPEED  10  /* px/sec */
+
+/* Forward‐declare the callbacks (now that we’ve included the event headers) */
 static void title_update_cb(struct media_title_notification notif);
 static void artist_update_cb(struct media_artist_notification notif);
 static void media_conn_update_cb(struct is_connected_notification conn);
-#endif
+
+#endif /* peripheral media widget */
 
 enum widget_children {
     WIDGET_TOP = 0,
@@ -512,8 +522,8 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     // Ensure state is zero-initialized (no stale data)
     memset(&widget->state, 0, sizeof(widget->state));
 
-#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    // Only register the old listeners when not in media-info mode
+    /* ─── when NOT in media‐mode, register the old status listeners ─── */
+#if !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) || !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     widget_battery_status_init();
     widget_output_status_init();
     widget_layer_status_init();
@@ -524,9 +534,14 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     widget_layout_init();
 #endif
-#endif // !CONFIG_NICE_VIEW_HID_MEDIA_INFO
+#endif
+#endif  /* end old‐status listeners */
 
-#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    /* ─── when in media‐mode ON the peripheral, build the Now Playing UI ─── */
+#if defined(CONFIG_RAW_HID) && \
+    !defined(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && \
+    defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
     // Now Playing header
     widget->label_now = lv_label_create(widget->obj);
     lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
@@ -550,11 +565,11 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_label_set_text(widget->label_artist, "");
     lv_obj_set_pos(widget->label_artist, 0, NOWPLAY_Y_OFFSET + 12 + 4 + 18 + 2);
 
-    // Register your media listeners
+    // Register the callbacks we forward-declared above
     widget_media_title_init();
     widget_media_artist_init();
     widget_media_conn_init();
-#endif
+#endif /* peripheral media widget */
 
     sys_slist_append(&widgets, &widget->node);
 
