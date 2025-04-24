@@ -13,11 +13,15 @@ ZMK_EVENT_IMPL(volume_notification);
 ZMK_EVENT_IMPL(layout_notification);
 #endif
 
+/* Extend hid_data_type enum */
 typedef enum {
-    _TIME = 0xAA, // random value, must match companion app
+    _TIME = 0xAA,
     _VOLUME,
     _LAYOUT,
+    _MEDIA_ARTIST = 0xAD,
+    _MEDIA_TITLE,
 } hid_data_type;
+
 
 static bool is_connected = false;
 
