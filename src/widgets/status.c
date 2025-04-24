@@ -558,11 +558,6 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 
     sys_slist_append(&widgets, &widget->node);
 
-#if !defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    // Draw the normal widgets on init if not in media mode
-    draw_hid(widget->obj, widget->cbuf_hid, &widget->state);
-#endif
-
     return 0;
 }
 
