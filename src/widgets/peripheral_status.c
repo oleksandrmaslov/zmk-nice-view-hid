@@ -28,10 +28,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
-// List of widget instances
+// Active widget instances
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-// Draw battery + BLE connection on a single canvas
+// --- Internal Drawing ---
 static void draw_status(lv_obj_t *parent, lv_color_t cbuf[], const struct status_state *st) {
     lv_obj_t *canvas = lv_canvas_create(parent);
     lv_canvas_set_buffer(canvas, cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
@@ -40,7 +40,7 @@ static void draw_status(lv_obj_t *parent, lv_color_t cbuf[], const struct status
     lv_draw_rect_dsc_t bg; init_rect_dsc(&bg, LVGL_BACKGROUND);
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &bg);
 
-    // Battery icon
+    // Battery icon/level
     draw_battery(canvas, st);
 
     // BLE connection icon
@@ -51,30 +51,37 @@ static void draw_status(lv_obj_t *parent, lv_color_t cbuf[], const struct status
     rotate_canvas(canvas, cbuf);
 }
 
-// --- Battery listener ---
-static void set_battery_status(struct zmk_widget_status *w, struct battery_status_state bs) {
+// --- Battery Listener ---
+static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
+    const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
+    return (struct battery_status_state){
+        .state_of_charge = ev ? ev->state_of_charge : zmk_battery_state_of_charge(),
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    w->state.charging = bs.usb_present;
+        .usb_present = zmk_usb_is_powered(),
 #endif
-    w->state.battery = bs.state_of_charge;
-    draw_status(w->obj, w->cbuf, &w->state);
+    };
 }
 static void battery_status_update_cb(struct battery_status_state bs) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
-        set_battery_status(w, bs);
+        w->state.battery = bs.state_of_charge;
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+        w->state.charging = bs.usb_present;
+#endif
+        draw_status(w->obj, w->cbuf, &w->state);
     }
 }
 ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
-                            battery_status_update_cb, zmk_battery_state_of_charge_event)
-ZMK_SUBSCRIPTION(widget_battery_status, battery_state_changed);
+                            battery_status_update_cb, battery_status_get_state)
+ZMK_SUBSCRIPTION(widget_battery_status, zmk_battery_state_changed)
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+ZMK_SUBSCRIPTION(widget_battery_status, zmk_usb_conn_state_changed)
+#endif
 
-// --- Peripheral connection listener ---
-static struct peripheral_status_state get_conn(const zmk_event_t *eh) {
-    ARG_UNUSED(eh);
-    return (struct peripheral_status_state){
-        .connected = zmk_split_bt_peripheral_is_connected(),
-    };
+// --- Peripheral Connection Listener ---
+static struct peripheral_status_state get_conn(const zmk_event_t *evt) {
+    ARG_UNUSED(evt);
+    return (struct peripheral_status_state){ .connected = zmk_split_bt_peripheral_is_connected() };
 }
 static void connection_status_cb(struct peripheral_status_state ps) {
     struct zmk_widget_status *w;
@@ -85,53 +92,53 @@ static void connection_status_cb(struct peripheral_status_state ps) {
 }
 ZMK_DISPLAY_WIDGET_LISTENER(widget_peripheral_status, struct peripheral_status_state,
                             connection_status_cb, get_conn)
-ZMK_SUBSCRIPTION(widget_peripheral_status, split_peripheral_status_changed);
+ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed)
 
 #ifdef CONFIG_RAW_HID
-// --- Media title listener ---
+// --- Media Title Listener ---
 static struct media_title_notification get_media_title(const zmk_event_t *eh) {
     const struct media_title_notification *evt = as_media_title_notification(eh);
     return evt ? *evt : (struct media_title_notification){ .title = "" };
 }
-static void media_title_cb(struct media_title_notification mtn) {
+static void media_title_cb(struct media_title_notification mt) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
-        lv_label_set_text(w->label_track, mtn.title[0] ? mtn.title : "No media");
+        lv_label_set_text(w->label_track, mt.title[0] ? mt.title : "No media");
     }
 }
-ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title,
-    struct media_title_notification, media_title_cb, get_media_title)
-ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title, struct media_title_notification,
+                            media_title_cb, get_media_title)
+ZMK_SUBSCRIPTION(widget_media_title, media_title_notification)
 
-// --- Media artist listener ---
+// --- Media Artist Listener ---
 static struct media_artist_notification get_media_artist(const zmk_event_t *eh) {
     const struct media_artist_notification *evt = as_media_artist_notification(eh);
     return evt ? *evt : (struct media_artist_notification){ .artist = "" };
 }
-static void media_artist_cb(struct media_artist_notification man) {
+static void media_artist_cb(struct media_artist_notification ma) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
-        lv_label_set_text(w->label_artist, man.artist);
+        lv_label_set_text(w->label_artist, ma.artist);
     }
 }
-ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist,
-    struct media_artist_notification, media_artist_cb, get_media_artist)
-ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist, struct media_artist_notification,
+                            media_artist_cb, get_media_artist)
+ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification)
 #endif
 
+// --- Initialization ---
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
-    // Container provided by caller
     widget->obj = parent;
 
     // Initial draw
     draw_status(widget->obj, widget->cbuf, &widget->state);
 
-    // Register in update chain
+    // Register for updates
     sys_slist_append(&widgets, &widget->node);
 
-    // Create Now Playing labels if enabled
 #ifdef CONFIG_RAW_HID
 #if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    // Create "Now Playing" UI
     widget->label_now = lv_label_create(widget->obj);
     lv_label_set_text_static(widget->label_now, "Now Playing");
     lv_obj_set_pos(widget->label_now, 0, CANVAS_SIZE + 4);
@@ -144,13 +151,13 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
     lv_obj_set_pos(widget->label_artist, 0, CANVAS_SIZE + 44);
 
-    // Fire initial media events
+    // Trigger initial media updates
     widget_media_title_init();
     widget_media_artist_init();
 #endif
 #endif
 
-    // Fire initial battery & connection events
+    // Trigger initial system updates
     widget_battery_status_init();
     widget_peripheral_status_init();
 
