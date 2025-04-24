@@ -53,16 +53,17 @@ static void draw_status(lv_obj_t *parent, lv_color_t cbuf[], const struct status
 static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
     const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
     return (struct battery_status_state){
-        .state_of_charge = ev ? ev->state_of_charge : zmk_battery_state_of_charge(),
+        .level = ev ? ev->state_of_charge : zmk_battery_state_of_charge(),
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
         .usb_present = zmk_usb_is_powered(),
 #endif
     };
 }
+}
 static void battery_status_update_cb(struct battery_status_state bs) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
-        w->state.battery = bs.state_of_charge;
+        w->state.battery = bs.level;
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
         w->state.charging = bs.usb_present;
 #endif
