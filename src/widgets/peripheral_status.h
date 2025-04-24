@@ -11,11 +11,21 @@
 #include <zephyr/kernel.h>
 #include "util.h"
 
+struct peripheral_status_state {
+    bool connected;
+    char track_title[32];
+    char track_artist[32];
+    int battery;
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+    bool charging;
+#endif
+};
+
 struct zmk_widget_status {
     sys_snode_t node;
     lv_obj_t *obj;
     lv_color_t cbuf[CANVAS_SIZE * CANVAS_SIZE];
-    struct status_state state;
+    struct peripheral_status_state state;
 #if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     lv_obj_t *label_now;
     lv_obj_t *label_track;
