@@ -1,196 +1,162 @@
 /*
+ * Peripheral Status Widget Implementation
+ *
+ * Shows battery level and BLE peripheral connection status,
+ * and "Now Playing" media info forwarded over Raw HID from the central.
  *
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
- *
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/random/random.h>
-
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/battery.h>
 #include <zmk/display.h>
-#include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
-#include <zmk/split/bluetooth/peripheral.h>
 #include <zmk/events/split_peripheral_status_changed.h>
+#include <zmk/split/bluetooth/peripheral.h>
 #include <zmk/usb.h>
 #include <zmk/ble.h>
 
+#ifdef CONFIG_RAW_HID
+#include <nice_view_hid/hid.h>
+#include <raw_hid/events.h>
+#include <nice_view_hid/media_events.h>
+#endif
+
 #include "peripheral_status.h"
 
+// List of widget instances
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-struct peripheral_status_state {
-    bool connected;
-};
+// Draw battery + BLE connection on a single canvas
+static void draw_status(lv_obj_t *parent, lv_color_t cbuf[], const struct status_state *st) {
+    lv_obj_t *canvas = lv_canvas_create(parent);
+    lv_canvas_set_buffer(canvas, cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_align(canvas, LV_ALIGN_TOP_LEFT, 0, 0);
 
-static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 0);
+    lv_draw_rect_dsc_t bg; init_rect_dsc(&bg, LVGL_BACKGROUND);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &bg);
 
-    lv_draw_label_dsc_t label_dsc;
-    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
-    lv_draw_rect_dsc_t rect_black_dsc;
-    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+    // Battery icon
+    draw_battery(canvas, st);
 
-    // Fill background
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    // BLE connection icon
+    lv_draw_label_dsc_t lbl; init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
+    const char *sym = zmk_split_bt_peripheral_is_connected() ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE;
+    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &lbl, sym);
 
-    // Draw battery
-    draw_battery(canvas, state);
-
-    // Draw output status
-    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
-                        state->connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
-
-    // Rotate canvas
     rotate_canvas(canvas, cbuf);
 }
 
-static void set_battery_status(struct zmk_widget_status *widget,
-                               struct battery_status_state state) {
+// --- Battery listener ---
+static void set_battery_status(struct zmk_widget_status *w, struct battery_status_state bs) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    widget->state.charging = state.usb_present;
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
-
-    widget->state.battery = state.level;
-
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    w->state.charging = bs.usb_present;
+#endif
+    w->state.battery = bs.state_of_charge;
+    draw_status(w->obj, w->cbuf, &w->state);
 }
-
-static void battery_status_update_cb(struct battery_status_state state) {
-    struct zmk_widget_status *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) { set_battery_status(widget, state); }
+static void battery_status_update_cb(struct battery_status_state bs) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        set_battery_status(w, bs);
+    }
 }
+ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
+                            battery_status_update_cb, zmk_battery_state_of_charge_event)
+ZMK_SUBSCRIPTION(widget_battery_status, battery_state_changed);
 
-static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
-    return (struct battery_status_state){
-        .level = zmk_battery_state_of_charge(),
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-        .usb_present = zmk_usb_is_powered(),
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+// --- Peripheral connection listener ---
+static struct peripheral_status_state get_conn(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    return (struct peripheral_status_state){
+        .connected = zmk_split_bt_peripheral_is_connected(),
     };
 }
-
-ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
-                            battery_status_update_cb, battery_status_get_state)
-
-ZMK_SUBSCRIPTION(widget_battery_status, zmk_battery_state_changed);
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-ZMK_SUBSCRIPTION(widget_battery_status, zmk_usb_conn_state_changed);
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
-
-static struct peripheral_status_state get_state(const zmk_event_t *_eh) {
-    return (struct peripheral_status_state){.connected = zmk_split_bt_peripheral_is_connected()};
+static void connection_status_cb(struct peripheral_status_state ps) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        w->state.connected = ps.connected;
+        draw_status(w->obj, w->cbuf, &w->state);
+    }
 }
-
-static void set_connection_status(struct zmk_widget_status *widget,
-                                  struct peripheral_status_state state) {
-    widget->state.connected = state.connected;
-
-    draw_top(widget->obj, widget->cbuf, &widget->state);
-}
-
-static void output_status_update_cb(struct peripheral_status_state state) {
-    struct zmk_widget_status *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) { set_connection_status(widget, state); }
-}
-
 ZMK_DISPLAY_WIDGET_LISTENER(widget_peripheral_status, struct peripheral_status_state,
-                            output_status_update_cb, get_state)
-ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed);
+                            connection_status_cb, get_conn)
+ZMK_SUBSCRIPTION(widget_peripheral_status, split_peripheral_status_changed);
 
-#if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-static void title_update_cb(struct media_title_notification notif) {
-    struct zmk_widget_status *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        strncpy(widget->state.track_title, notif.title, sizeof(widget->state.track_title));
-        widget->state.track_title[sizeof(widget->state.track_title)-1] = '\0';
-        if (widget->state.track_title[0] == '\0') {
-            lv_label_set_text(widget->label_track, "No media");
-            lv_label_set_text(widget->label_artist, "");
-        } else {
-            lv_label_set_text(widget->label_track, widget->state.track_title);
-        }
+#ifdef CONFIG_RAW_HID
+// --- Media title listener ---
+static struct media_title_notification get_media_title(const zmk_event_t *eh) {
+    const struct media_title_notification *evt = as_media_title_notification(eh);
+    return evt ? *evt : (struct media_title_notification){ .title = "" };
+}
+static void media_title_cb(struct media_title_notification mtn) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        lv_label_set_text(w->label_track, mtn.title[0] ? mtn.title : "No media");
     }
 }
-
-static void artist_update_cb(struct media_artist_notification notif) {
-    struct zmk_widget_status *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        if (widget->state.track_title[0] != '\0') {
-            strncpy(widget->state.track_artist, notif.artist, sizeof(widget->state.track_artist));
-            widget->state.track_artist[sizeof(widget->state.track_artist)-1] = '\0';
-            lv_label_set_text(widget->label_artist, widget->state.track_artist);
-        }
-    }
-}
-
-static void media_conn_update_cb(struct is_connected_notification conn) {
-    struct zmk_widget_status *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        if (!conn.value) {
-            widget->state.track_title[0] = '\0';
-            widget->state.track_artist[0] = '\0';
-            lv_label_set_text(widget->label_track, "No media");
-            lv_label_set_text(widget->label_artist, "");
-        }
-    }
-}
-
 ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title,
-    struct media_title_notification, title_update_cb, as_media_title_notification)
+    struct media_title_notification, media_title_cb, get_media_title)
 ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
 
+// --- Media artist listener ---
+static struct media_artist_notification get_media_artist(const zmk_event_t *eh) {
+    const struct media_artist_notification *evt = as_media_artist_notification(eh);
+    return evt ? *evt : (struct media_artist_notification){ .artist = "" };
+}
+static void media_artist_cb(struct media_artist_notification man) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        lv_label_set_text(w->label_artist, man.artist);
+    }
+}
 ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist,
-    struct media_artist_notification, artist_update_cb, as_media_artist_notification)
+    struct media_artist_notification, media_artist_cb, get_media_artist)
 ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
-
-ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn,
-    struct is_connected_notification, media_conn_update_cb, get_is_hid_connected)
-ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
 #endif
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
-    widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 160, 68);
-    lv_obj_t *top = lv_canvas_create(widget->obj);
-    lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+    // Container provided by caller
+    widget->obj = parent;
 
+    // Initial draw
+    draw_status(widget->obj, widget->cbuf, &widget->state);
+
+    // Register in update chain
+    sys_slist_append(&widgets, &widget->node);
+
+    // Create Now Playing labels if enabled
+#ifdef CONFIG_RAW_HID
 #if defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
-    // Now Playing header
     widget->label_now = lv_label_create(widget->obj);
-    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, 0);
     lv_label_set_text_static(widget->label_now, "Now Playing");
-    lv_obj_set_pos(widget->label_now, 0, 20);
+    lv_obj_set_pos(widget->label_now, 0, CANVAS_SIZE + 4);
 
-    // Track title (scrolling)
     widget->label_track = lv_label_create(widget->obj);
-    lv_obj_set_width(widget->label_track, 160);
-    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, 0);
     lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_label_set_text(widget->label_track, "No media");
-    lv_obj_set_pos(widget->label_track, 0, 36);
+    lv_obj_set_pos(widget->label_track, 0, CANVAS_SIZE + 24);
 
-    // Artist name
     widget->label_artist = lv_label_create(widget->obj);
-    lv_obj_set_width(widget->label_artist, 160);
-    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, 0);
     lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
-    lv_label_set_text(widget->label_artist, "");
-    lv_obj_set_pos(widget->label_artist, 0, 58);
+    lv_obj_set_pos(widget->label_artist, 0, CANVAS_SIZE + 44);
+
+    // Fire initial media events
+    widget_media_title_init();
+    widget_media_artist_init();
+#endif
 #endif
 
-    sys_slist_append(&widgets, &widget->node);
+    // Fire initial battery & connection events
     widget_battery_status_init();
     widget_peripheral_status_init();
 
     return 0;
 }
 
-lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget) { return widget->obj; }
+lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget) {
+    return widget->obj;
+}
