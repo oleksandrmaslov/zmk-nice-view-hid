@@ -6,7 +6,6 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/random/random.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -21,10 +20,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/usb.h>
 #include <zmk/ble.h>
 
-#include "peripheral_status.h"
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
+#include <nice_view_hid/hid.h>
+#include "status.h"  // brings in widget_media_title_init, widget_media_artist_init, etc.
+#endif
 
-LV_IMG_DECLARE(balloon);
-LV_IMG_DECLARE(mountain);
+#include "peripheral_status.h"
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -107,6 +108,58 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_peripheral_status, struct peripheral_status_s
                             output_status_update_cb, get_state)
 ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed);
 
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+
+/* Pull title from incoming event */
+static struct media_title_notification get_title_notif(const zmk_event_t *eh) {
+    struct media_title_notification *ev = as_media_title_notification(eh);
+    return ev ? *ev : (struct media_title_notification){.title = ""};
+}
+
+static void title_update_cb(struct media_title_notification notif) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        lv_label_set_text(widget->label_track, notif.title);
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title, struct media_title_notification, title_update_cb,
+                            get_title_notif)
+ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
+
+/* Pull artist from incoming event */
+static struct media_artist_notification get_artist_notif(const zmk_event_t *eh) {
+    struct media_artist_notification *ev = as_media_artist_notification(eh);
+    return ev ? *ev : (struct media_artist_notification){.artist = ""};
+}
+
+static void artist_update_cb(struct media_artist_notification notif) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        lv_label_set_text(widget->label_artist, notif.artist);
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist, struct media_artist_notification,
+                            artist_update_cb, get_artist_notif)
+ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
+
+/* Connection state for media */
+static struct is_connected_notification get_media_conn_notif(const zmk_event_t *eh) {
+    struct is_connected_notification *ev = as_is_connected_notification(eh);
+    return ev ? *ev : (struct is_connected_notification){.value = false};
+}
+
+static void media_conn_update_cb(struct is_connected_notification notif) {
+    struct zmk_widget_status *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        lv_label_set_text(widget->label_now, notif.value ? "Now Playing" : "");
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn, struct is_connected_notification,
+                            media_conn_update_cb, get_media_conn_notif)
+ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
+
+#endif
+
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     lv_obj_set_size(widget->obj, 160, 68);
@@ -114,14 +167,38 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-    lv_obj_t *art = lv_img_create(widget->obj);
-    bool random = sys_rand32_get() & 1;
-    lv_img_set_src(art, random ? &balloon : &mountain);
-    lv_obj_align(art, LV_ALIGN_TOP_LEFT, 0, 0);
-
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
     widget_peripheral_status_init();
+
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    /* Initialize media widget listeners */
+    widget_media_title_init();
+    widget_media_artist_init();
+    widget_media_conn_init();
+
+    /* "Now Playing" header */
+    widget->label_now = lv_label_create(widget->obj);
+    lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_label_set_text(widget->label_now, "Now Playing");
+    lv_obj_set_pos(widget->label_now, 0, 60);
+
+    /* Track title (scrolling) */
+    widget->label_track = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_track, CANVAS_SIZE);
+    lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(widget->label_track, "");
+    lv_obj_set_pos(widget->label_track, 0, 72);
+
+    /* Artist (truncated) */
+    widget->label_artist = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_artist, CANVAS_SIZE);
+    lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
+    lv_label_set_text(widget->label_artist, "");
+    lv_obj_set_pos(widget->label_artist, 0, 98);
+#endif
 
     return 0;
 }
