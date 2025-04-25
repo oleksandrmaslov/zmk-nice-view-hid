@@ -27,7 +27,6 @@
  #endif
  
 #include "status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE :contentReference[oaicite:0]{index=0}
-#include "util.h"      // for init_rect_dsc(), init_label_dsc(), rotate_canvas() :contentReference[oaicite:1]{index=1}
  
  static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
  
