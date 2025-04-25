@@ -1,16 +1,24 @@
 /*
+ *
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
+ *
  */
 
-#include <zephyr/kernel.h>
+ #include <zephyr/kernel.h>
 
-#include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
-
-#include <zmk/display.h>
-#include <zmk/event_manager.h>
-#include <zmk/events/split_peripheral_status_changed.h>
+ #include <zephyr/logging/log.h>
+ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+ 
+ #include <zmk/battery.h>
+ #include <zmk/display.h>
+ #include <zmk/events/usb_conn_state_changed.h>
+ #include <zmk/event_manager.h>
+ #include <zmk/events/battery_state_changed.h>
+ #include <zmk/split/bluetooth/peripheral.h>
+ #include <zmk/events/split_peripheral_status_changed.h>
+ #include <zmk/usb.h>
+ #include <zmk/ble.h>
 
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 #include "status.h"            // for struct status_state, widget_media_* symbols
