@@ -31,10 +31,6 @@
 
 // this macro expands to a proper listener that only fires
 // when type == RAW_HID, and hands you (data, length)
-ZMK_SPLIT_PERIPHERAL_BIND(
-    ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID,
-    split_raw_hid_handler);
-
 static void split_raw_hid_handler(const uint8_t *data, size_t length) {
     struct raw_hid_received_event evt = {
         .data   = (uint8_t *)data,
