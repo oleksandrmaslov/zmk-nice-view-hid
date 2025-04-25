@@ -2,7 +2,6 @@
  *
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
- *
  */
 
 #include <lvgl.h>
@@ -10,21 +9,21 @@
 
 #define CANVAS_SIZE 68
 
-#define LVGL_BACKGROUND                                                                            \
+#define LVGL_BACKGROUND \
     IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_black() : lv_color_white()
-#define LVGL_FOREGROUND                                                                            \
+#define LVGL_FOREGROUND \
     IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_white() : lv_color_black()
 
 struct status_state {
     uint8_t battery;
     bool charging;
-#if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     struct zmk_endpoint_instance selected_endpoint;
     uint8_t active_profile_index;
     bool active_profile_connected;
     bool active_profile_bonded;
     uint8_t layer_index;
     const char *layer_label;
+    bool connected;
 #ifdef CONFIG_RAW_HID
     bool is_connected;
     uint8_t hour;
@@ -33,9 +32,6 @@ struct status_state {
     uint8_t layout;
     char track_title[32];
     char track_artist[32];
-#endif
-#else
-    bool connected;
 #endif
 };
 
