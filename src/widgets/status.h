@@ -1,3 +1,4 @@
+
 /*
  *
  * Copyright (c) 2023 The ZMK Contributors
@@ -18,6 +19,11 @@ struct zmk_widget_status {
     lv_color_t cbuf_hid[CANVAS_SIZE * CANVAS_SIZE];
     lv_color_t cbuf2[CANVAS_SIZE * CANVAS_SIZE];
     lv_color_t cbuf3[CANVAS_SIZE * CANVAS_SIZE];
+    struct status_state state;
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    lv_obj_t *label_now;
+    lv_obj_t *label_track;
+    lv_obj_t *label_artist;
 #endif
 };
 
