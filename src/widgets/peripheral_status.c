@@ -9,29 +9,28 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#include <zmk/battery.h>
 #include <zmk/display.h>
 #include <zmk/event_manager.h>
-#include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/events/battery_state_changed.h>
 #include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/split/bluetooth/peripheral.h>
-#include <zmk/split/transport/peripheral.h>
+
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 #include <nice_view_hid/hid.h>
 #endif
+
 #include "peripheral_status.h"
 #include <raw_hid/events.h>
 
 // -----------------------------------------------------------------------------
-// 0) RAW_HID: handle incoming RAW_HID commands from central
+// 0) RAW_HID: handle central commands
 // -----------------------------------------------------------------------------
-static int periph_transport_handler(const struct zmk_split_transport_peripheral *transport,
-                                     struct zmk_split_transport_central_command cmd) {
+int zmk_split_transport_peripheral_command_handler(
+    const struct zmk_split_transport_peripheral *transport,
+    struct zmk_split_transport_central_command cmd) {
     ARG_UNUSED(transport);
     if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
         struct raw_hid_received_event evt = {
-            .data = (uint8_t *)cmd.data.raw_hid.data,
+            .data   = (uint8_t *)cmd.data.raw_hid.data,
             .length = sizeof(cmd.data.raw_hid.data),
         };
         raise_raw_hid_received_event(evt);
@@ -39,13 +38,31 @@ static int periph_transport_handler(const struct zmk_split_transport_peripheral 
     return 0;
 }
 
-static const struct zmk_split_transport_peripheral_api periph_transport_api = {
-    .report_event = periph_transport_handler,
-};
-ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(periph_transport, &periph_transport_api);
+// -----------------------------------------------------------------------------
+// 1) DRAW UTILITY: top bar drawing
+// -----------------------------------------------------------------------------
+static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct peripheral_status_state *state) {
+    lv_obj_t *canvas = lv_obj_get_child(widget, 0);
+
+    lv_draw_label_dsc_t label_dsc;
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
+    lv_draw_rect_dsc_t rect_black_dsc;
+    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+
+    /* Fill background */
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+
+    /* Draw connection icon */
+    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
+                        state->connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
+
+    /* Rotate canvas for display orientation */
+    rotate_canvas(canvas, cbuf);
+}
 
 // -----------------------------------------------------------------------------
-// 1) CONNECTION ICON & WIDGET LIST
+// 2) CONNECTION ICON & WIDGET LIST
+// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -80,6 +97,7 @@ static struct media_title_notification get_title_notif(const zmk_event_t *eh) {
     struct media_title_notification *ev = as_media_title_notification(eh);
     return ev ? *ev : (struct media_title_notification){ .title = "" };
 }
+
 static void title_update_cb(struct media_title_notification notif) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
@@ -97,6 +115,7 @@ static struct media_artist_notification get_artist_notif(const zmk_event_t *eh) 
     struct media_artist_notification *ev = as_media_artist_notification(eh);
     return ev ? *ev : (struct media_artist_notification){ .artist = "" };
 }
+
 static void artist_update_cb(struct media_artist_notification notif) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
@@ -115,6 +134,7 @@ static struct is_connected_notification get_media_conn_notif(const zmk_event_t *
     struct is_connected_notification *ev = as_is_connected_notification(eh);
     return ev ? *ev : (struct is_connected_notification){ .value = false };
 }
+
 static void media_conn_update_cb(struct is_connected_notification notif) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
@@ -124,6 +144,7 @@ static void media_conn_update_cb(struct is_connected_notification notif) {
 ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn,
     struct is_connected_notification, media_conn_update_cb, get_media_conn_notif)
 ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
+
 #endif // CONFIG_NICE_VIEW_HID_MEDIA_INFO
 
 // -----------------------------------------------------------------------------
@@ -138,7 +159,6 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
     sys_slist_append(&widgets, &widget->node);
-    widget_battery_status_init();
     widget_peripheral_status_init();
 
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
@@ -171,10 +191,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 
     // initial rendering
     struct peripheral_status_state st = get_state(NULL);
-    draw_top   (widget->obj, widget->cbuf,     &widget->state);
-    draw_hid   (widget->obj, widget->cbuf_hid, &widget->state);
-    draw_middle(widget->obj, widget->cbuf2,    &widget->state);
-    draw_bottom(widget->obj, widget->cbuf3,    &widget->state);
+    draw_top(widget->obj, widget->cbuf, &st);
 
     return 0;
 }
