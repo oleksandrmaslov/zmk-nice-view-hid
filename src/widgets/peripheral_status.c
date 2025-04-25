@@ -180,7 +180,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->label_now = lv_label_create(widget->obj);
     lv_obj_set_style_text_font(widget->label_now, &lv_font_montserrat_12, LV_STATE_DEFAULT);
     lv_label_set_text(widget->label_now, "Now Playing");
-    lv_obj_set_pos(widget->label_now, 0, 60);
+    lv_obj_set_pos(widget->label_now, 0, 32);
 
     /* Track title (scrolling) */
     widget->label_track = lv_label_create(widget->obj);
@@ -188,7 +188,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_set_style_text_font(widget->label_track, &lv_font_montserrat_18, LV_STATE_DEFAULT);
     lv_label_set_long_mode(widget->label_track, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_label_set_text(widget->label_track, "");
-    lv_obj_set_pos(widget->label_track, 0, 72);
+    lv_obj_set_pos(widget->label_track, 0, 44);
 
     /* Artist (truncated) */
     widget->label_artist = lv_label_create(widget->obj);
@@ -196,7 +196,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_set_style_text_font(widget->label_artist, &lv_font_montserrat_12, LV_STATE_DEFAULT);
     lv_label_set_long_mode(widget->label_artist, LV_LABEL_LONG_DOT);
     lv_label_set_text(widget->label_artist, "");
-    lv_obj_set_pos(widget->label_artist, 0, 98);
+    lv_obj_set_pos(widget->label_artist, 0, 56);
 #endif
 
     return 0;
