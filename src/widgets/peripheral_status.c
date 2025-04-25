@@ -26,7 +26,6 @@
  #include <nice_view_hid/hid.h>
  #endif
 
-#include "util.h"      // for init_rect_dsc(), init_label_dsc(), rotate_canvas()
 #include "peripheral_status.h"    // for struct status_state, WIDGET_*, CANVAS_SIZE
 
 // ------------------------------------------------------------------------------------------------
