@@ -17,40 +17,35 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/split/bluetooth/peripheral.h>
 #include <zmk/split/transport/peripheral.h>
-#include <zmk/usb.h>
-#include <zmk/ble.h>
-#include <raw_hid/events.h>
-
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 #include <nice_view_hid/hid.h>
 #endif
-
 #include "peripheral_status.h"
+#include <raw_hid/events.h>
 
 // -----------------------------------------------------------------------------
-// 1) RAW_HID: forward split-peripheral RAW_HID packets
+// 0) RAW_HID: handle incoming RAW_HID commands from central
 // -----------------------------------------------------------------------------
-static int split_periph_to_rawhid(const zmk_event_t *eh) {
-    const struct zmk_split_peripheral_status_changed *ev =
-        as_zmk_split_peripheral_status_changed(eh);
-    if (!ev) {
-        return 0;
-    }
-
-    if (ev->type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+static int periph_transport_handler(const struct zmk_split_transport_peripheral *transport,
+                                     struct zmk_split_transport_central_command cmd) {
+    ARG_UNUSED(transport);
+    if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
         struct raw_hid_received_event evt = {
-            .data   = (uint8_t *)ev->data,
-            .length = ev->data_len,
+            .data = (uint8_t *)cmd.data.raw_hid.data,
+            .length = sizeof(cmd.data.raw_hid.data),
         };
         raise_raw_hid_received_event(evt);
     }
     return 0;
 }
-ZMK_LISTENER(split_periph_to_rawhid, split_periph_to_rawhid)
-ZMK_SUBSCRIPTION(split_periph_to_rawhid, zmk_split_peripheral_status_changed);
+
+static const struct zmk_split_transport_peripheral_api periph_transport_api = {
+    .report_event = periph_transport_handler,
+};
+ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(periph_transport, &periph_transport_api);
 
 // -----------------------------------------------------------------------------
-// 2) CONNECTION ICON & WIDGET LIST
+// 1) CONNECTION ICON & WIDGET LIST
 // -----------------------------------------------------------------------------
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -77,11 +72,10 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_peripheral_status,
 ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed);
 
 // -----------------------------------------------------------------------------
-// 3) NOW PLAYING (MEDIA INFO)
+// 2) NOW PLAYING (MEDIA INFO)
 // -----------------------------------------------------------------------------
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
 
-// Title notification → update track title
 static struct media_title_notification get_title_notif(const zmk_event_t *eh) {
     struct media_title_notification *ev = as_media_title_notification(eh);
     return ev ? *ev : (struct media_title_notification){ .title = "" };
@@ -99,7 +93,6 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title,
     struct media_title_notification, title_update_cb, get_title_notif)
 ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
 
-// Artist notification → update artist name
 static struct media_artist_notification get_artist_notif(const zmk_event_t *eh) {
     struct media_artist_notification *ev = as_media_artist_notification(eh);
     return ev ? *ev : (struct media_artist_notification){ .artist = "" };
@@ -118,7 +111,6 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist,
     struct media_artist_notification, artist_update_cb, get_artist_notif)
 ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
-// Playback connection → show/hide "Now Playing"
 static struct is_connected_notification get_media_conn_notif(const zmk_event_t *eh) {
     struct is_connected_notification *ev = as_is_connected_notification(eh);
     return ev ? *ev : (struct is_connected_notification){ .value = false };
@@ -132,11 +124,10 @@ static void media_conn_update_cb(struct is_connected_notification notif) {
 ZMK_DISPLAY_WIDGET_LISTENER(widget_media_conn,
     struct is_connected_notification, media_conn_update_cb, get_media_conn_notif)
 ZMK_SUBSCRIPTION(widget_media_conn, is_connected_notification);
-
 #endif // CONFIG_NICE_VIEW_HID_MEDIA_INFO
 
 // -----------------------------------------------------------------------------
-// 4) WIDGET INIT
+// 3) WIDGET INIT
 // -----------------------------------------------------------------------------
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
@@ -188,6 +179,6 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     return 0;
 }
 
-lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget) { 
-    return widget->obj; 
+lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget) {
+    return widget->obj;
 }
