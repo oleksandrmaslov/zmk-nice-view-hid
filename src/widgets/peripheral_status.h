@@ -16,6 +16,11 @@ struct zmk_widget_status {
     lv_obj_t *obj;
     lv_color_t cbuf[CANVAS_SIZE * CANVAS_SIZE];
     struct status_state state;
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    lv_obj_t *label_now;
+    lv_obj_t *label_track;
+    lv_obj_t *label_artist;
+#endif
 };
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent);
