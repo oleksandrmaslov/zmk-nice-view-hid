@@ -27,7 +27,17 @@
  #endif
  
 #include "peripheral_status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE :contentReference[oaicite:0]{index=0}
- 
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Local draw_* routines (copied from status.c) need forward declarations
+// so we don’t get implicit‐declaration & static‐vs‐nonstatic conflicts.
+static void draw_top   (lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
+static void draw_hid   (lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
+static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
+static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
+// ──────────────────────────────────────────────────────────────────────────────
+
  static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
  
  /*--------------------------------------------------------
