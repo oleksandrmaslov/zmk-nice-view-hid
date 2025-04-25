@@ -25,21 +25,32 @@
 #endif
 
 #include "peripheral_status.h"
-#include <zmk/event_manager.h> 
-#include <raw_hid/events.h>
+#include <zmk/event_manager.h>
 #include <zmk/split/transport/peripheral.h>
 
-// this macro expands to a proper listener that only fires
-// when type == RAW_HID, and hands you (data, length)
-static void split_raw_hid_handler(const uint8_t *data, size_t length) {
-    struct raw_hid_received_event evt = {
-        .data   = (uint8_t *)data,
-        .length = length,
-    };
-    raise_raw_hid_received_event(evt);
+#include <raw_hid/events.h>
+
+// Handler for split peripheral status changed event
+static int split_peripheral_status_changed_listener(const zmk_event_t *eh) {
+    const struct zmk_split_peripheral_status_changed *ev = as_zmk_split_peripheral_status_changed(eh);
+    if (!ev) {
+        return 0;
+    }
+
+    // Check if this is a RAW_HID packet (you may need to adjust this check for your protocol)
+    if (ev->type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        struct raw_hid_received_event evt = {
+            .data   = (uint8_t *)ev->data,
+            .length = ev->data_len,
+        };
+        raise_raw_hid_received_event(evt);
+    }
+    return 0;
 }
 
-// Local media‐widget update callbacks
+ZMK_LISTENER(split_peripheral_status_changed, split_peripheral_status_changed_listener);
+ZMK_SUBSCRIPTION(split_peripheral_status_changed, zmk_split_peripheral_status_changed);
+
 static void media_title_cb(const struct media_title_notification *notif) {
     struct zmk_widget_status *w;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
