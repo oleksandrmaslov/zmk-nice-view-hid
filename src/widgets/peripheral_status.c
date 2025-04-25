@@ -21,10 +21,53 @@
  #include <zmk/ble.h>
 
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
+#include "status.h"            // for struct status_state, widget_media_* symbols
 #include <nice_view_hid/hid.h> // for media_title_notification, etc.
 #endif
-#include "peripheral_status.h"            // for struct status_state, widget_media_* symbols
 
+#include "peripheral_status.h"
+#include <raw_hid/events.h>                // for raw_hid_received_event
+#include <zmk/split/transport/peripheral.h>
+#include <zmk/event_manager.h>            // for ZMK_SPLIT_PERIPHERAL_BIND
+
+// Forward Raw HID packets from the central half back into the local HID event stream
+static void split_raw_hid_handler(
+    const struct zmk_split_transport_peripheral_command *cmd)
+{
+    if (cmd->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        return;
+    }
+    struct raw_hid_received_event evt = {
+        .data   = (uint8_t *)cmd->data.raw_hid.data,
+        .length = CONFIG_RAW_HID_REPORT_SIZE,
+    };
+    raise_raw_hid_received_event(evt);
+}
+ZMK_SPLIT_PERIPHERAL_BIND(
+    ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID,
+    split_raw_hid_handler);
+
+// Local media‐widget update callbacks
+static void media_title_cb(const struct media_title_notification *notif) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        strncpy(w->state.track_title, notif->title, sizeof(w->state.track_title));
+        lv_label_set_text(w->label_track, w->state.track_title);
+    }
+}
+static void media_artist_cb(const struct media_artist_notification *notif) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        strncpy(w->state.track_artist, notif->artist, sizeof(w->state.track_artist));
+        lv_label_set_text(w->label_artist, w->state.track_artist);
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title, struct media_title_notification,
+                            media_title_cb, get_title_notif);
+ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist, struct media_artist_notification,
+                            media_artist_cb, get_artist_notif);
+ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -200,6 +243,12 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_label_set_text(widget->label_artist, "");
     lv_obj_set_pos(widget->label_artist, 0, 56);
 #endif
+
+    // Draw the full status screen right away (placeholders for media)
+    draw_top   (widget->obj, widget->cbuf,     &widget->state);
+    draw_hid   (widget->obj, widget->cbuf_hid, &widget->state);
+    draw_middle(widget->obj, widget->cbuf2,    &widget->state);
+    draw_bottom(widget->obj, widget->cbuf3,    &widget->state);
 
     return 0;
 }
