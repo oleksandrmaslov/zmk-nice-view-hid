@@ -21,9 +21,10 @@
  #include <zmk/ble.h>
 
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
-#include "status.h"            // for struct status_state, widget_media_* symbols
 #include <nice_view_hid/hid.h> // for media_title_notification, etc.
 #endif
+#include "peripheral_status.h"            // for struct status_state, widget_media_* symbols
+
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
