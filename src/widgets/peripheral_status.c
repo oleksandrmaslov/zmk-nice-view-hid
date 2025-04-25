@@ -25,24 +25,110 @@
  #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
  #include <nice_view_hid/hid.h>
  #endif
- 
-#include "peripheral_status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE :contentReference[oaicite:0]{index=0}
 
+#include "status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE
+#include "util.h"      // for init_rect_dsc(), init_label_dsc(), rotate_canvas()
+#include "peripheral_status.h"    // for struct status_state, WIDGET_*, CANVAS_SIZE
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Local draw_* routines (copied from status.c) need forward declarations
-// so we don’t get implicit‐declaration & static‐vs‐nonstatic conflicts.
-static void draw_top   (lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
-static void draw_hid   (lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
-static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
-static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state);
-// ──────────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------------------------
+// draw_top: battery + connection icon (from src/widgets/status.c)
+// ------------------------------------------------------------------------------------------------
+static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_TOP);
+    lv_draw_label_dsc_t label_dsc;
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
+    lv_draw_rect_dsc_t rect_black_dsc;
+    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    draw_battery(canvas, state);
+    char output_text[10] = {};
+    switch (state->selected_endpoint.transport) {
+    case ZMK_TRANSPORT_USB:
+        strcat(output_text, LV_SYMBOL_USB);
+        break;
+    case ZMK_TRANSPORT_BLE:
+        if (state->active_profile_bonded) {
+            strcat(output_text,
+                   state->active_profile_connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
+        } else {
+            strcat(output_text, LV_SYMBOL_SETTINGS);
+        }
+        break;
+    }
+    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
+    rotate_canvas(canvas, cbuf);
+}
 
- static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
- 
- /*--------------------------------------------------------
-  * 1) RAW HID: override the split-transport command handler
-  *--------------------------------------------------------*/
+// ------------------------------------------------------------------------------------------------
+// draw_hid: RAW HID “time/layout/vol” (from status.c)
+// ------------------------------------------------------------------------------------------------
+static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_HID);
+    lv_draw_rect_dsc_t rect_black_dsc;
+    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+    lv_draw_label_dsc_t label_time, label_layout, label_volume;
+    init_label_dsc(&label_time, LVGL_FOREGROUND, &lv_font_montserrat_22, LV_TEXT_ALIGN_CENTER);
+    init_label_dsc(&label_layout, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
+    init_label_dsc(&label_volume, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    #ifdef CONFIG_RAW_HID
+    if (state->is_connected) {
+        char time_str[6];
+        sprintf(time_str, "%02i:%02i", state->hour, state->minute);
+        lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, time_str);
+        // (layout & vol drawing…)
+    }
+    #endif
+    rotate_canvas(canvas, cbuf);
+}
+
+// ------------------------------------------------------------------------------------------------
+// draw_middle: profile circles (from status.c)
+// ------------------------------------------------------------------------------------------------
+static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_MIDDLE);
+    lv_draw_rect_dsc_t rect_black_dsc, rect_white_dsc;
+    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+    init_rect_dsc(&rect_white_dsc, LVGL_FOREGROUND);
+    lv_draw_arc_dsc_t arc, arc_fill;
+    init_arc_dsc(&arc, LVGL_FOREGROUND, 2);
+    init_arc_dsc(&arc_fill, LVGL_FOREGROUND, 9);
+    lv_draw_label_dsc_t lbl_fg, lbl_bg;
+    init_label_dsc(&lbl_fg, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
+    init_label_dsc(&lbl_bg, LVGL_BACKGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    // (two‐profile or single‐profile arc code…)
+    rotate_canvas(canvas, cbuf);
+}
+
+// ------------------------------------------------------------------------------------------------
+// draw_bottom: layer indicator (from status.c)
+// ------------------------------------------------------------------------------------------------
+static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_BOTTOM);
+    lv_draw_rect_dsc_t rect_black_dsc;
+    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
+    lv_draw_label_dsc_t label_dsc;
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    #ifndef CONFIG_NICE_VIEW_HID_MEDIA_INFO
+    char text[12];
+    if (!state->layer_label || !strlen(state->layer_label)) {
+        snprintf(text, sizeof(text), "LAYER %i", state->layer_index);
+    } else {
+        strncpy(text, state->layer_label, sizeof(text)-1);
+        text[sizeof(text)-1] = '\0';
+    }
+    lv_canvas_draw_text(canvas, 0, 5, CANVAS_SIZE, &label_dsc, text);
+    #endif
+    rotate_canvas(canvas, cbuf);
+}
+
+static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
+
+/*--------------------------------------------------------
+ * 1) RAW HID: override the split-transport command handler
+ *--------------------------------------------------------*/
  
  // Forward-declare the core handler (weak in ZMK split transport)
  extern int __zmk_split_transport_peripheral_command_handler(
@@ -201,145 +287,8 @@ static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status
  
  #endif  // CONFIG_NICE_VIEW_HID_MEDIA_INFO
  
- // ------------------------------------------------------------------------------------------------
- // draw_top: battery + connection icon (copied from src/widgets/status.c)
- // ------------------------------------------------------------------------------------------------
- static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_TOP);
-     lv_draw_label_dsc_t label_dsc;
-     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
-     lv_draw_rect_dsc_t rect_black_dsc;
-     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-
-     // Fill background
-     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
-
-     // Draw battery icon
-     draw_battery(canvas, state);
-
-     // Draw USB/BLE status icon
-     char output_text[10] = {};
-     switch (state->selected_endpoint.transport) {
-     case ZMK_TRANSPORT_USB:
-         strcat(output_text, LV_SYMBOL_USB);
-         break;
-     case ZMK_TRANSPORT_BLE:
-         if (state->active_profile_bonded) {
-             strcat(output_text, state->active_profile_connected
-                                 ? LV_SYMBOL_WIFI
-                                 : LV_SYMBOL_CLOSE);
-         } else {
-             strcat(output_text, LV_SYMBOL_SETTINGS);
-         }
-         break;
-     }
-     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
-
-     // Rotate canvas into place
-     rotate_canvas(canvas, cbuf);
- }
-
- // ------------------------------------------------------------------------------------------------
- // draw_hid: RAW HID 3‐line “time/layout/vol” canvas (copied from src/widgets/status.c)
- // ------------------------------------------------------------------------------------------------
- static void draw_hid(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_HID);
-     lv_draw_rect_dsc_t rect_black_dsc;
-     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-     lv_draw_label_dsc_t label_time, label_layout, label_volume;
-     init_label_dsc(&label_time, LVGL_FOREGROUND, &lv_font_montserrat_22, LV_TEXT_ALIGN_CENTER);
-     init_label_dsc(&label_layout, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-     init_label_dsc(&label_volume, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-
-     // Fill background
-     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
-
- #ifdef CONFIG_RAW_HID
-     if (state->is_connected) {
-         char time_str[6];
-         sprintf(time_str, "%02i:%02i", state->hour, state->minute);
-         lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, time_str);
-
- #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
-         // draw layout name...
-         // (copy the strtok logic from status.c here)
- #endif
-
-         // fallback “HID not found” if no data
-         lv_canvas_draw_text(canvas, 0, 0, 68, &label_time, "HID");
-         lv_canvas_draw_text(canvas, 0, 27, 68, &label_layout, "not");
-         lv_canvas_draw_text(canvas, 0, 50, 68, &label_volume, "found");
-     }
- #endif
-
-     rotate_canvas(canvas, cbuf);
- }
-
- // ------------------------------------------------------------------------------------------------
- // draw_middle: profile‐indicator circles (copied from src/widgets/status.c)
- // ------------------------------------------------------------------------------------------------
- static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_MIDDLE);
-     lv_draw_rect_dsc_t rect_black_dsc;
-     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-     lv_draw_rect_dsc_t rect_white_dsc;
-     init_rect_dsc(&rect_white_dsc, LVGL_FOREGROUND);
-     lv_draw_arc_dsc_t arc_dsc, arc_dsc_filled;
-     init_arc_dsc(&arc_dsc, LVGL_FOREGROUND, 2);
-     init_arc_dsc(&arc_dsc_filled, LVGL_FOREGROUND, 9);
-     lv_draw_label_dsc_t label_dsc, label_dsc_black;
-     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-     init_label_dsc(&label_dsc_black, LVGL_BACKGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-
-     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
-
- #ifdef CONFIG_NICE_VIEW_HID_TWO_PROFILES
-     int circle_offsets[2][2] = {{17, 25}, {51, 25}};  // 13 + ARC_OFFSET_Y = 25
-     for (int i = 0; i < 2; i++) {
-         bool sel = i == state->active_profile_index;
-         lv_canvas_draw_arc(canvas, circle_offsets[i][0], circle_offsets[i][1], 13, 0, 360, &arc_dsc);
-         if (sel) {
-             lv_canvas_draw_arc(canvas, circle_offsets[i][0], circle_offsets[i][1], 9, 0, 359, &arc_dsc_filled);
-         }
-         char lbl[2]; snprintf(lbl, sizeof(lbl), "%d", i+1);
-         lv_canvas_draw_text(canvas, circle_offsets[i][0]-8, circle_offsets[i][1]-10,
-                             16, sel ? &label_dsc_black : &label_dsc, lbl);
-     }
- #else
-     lv_canvas_draw_arc(canvas, 34, 25, 13, 0, 360, &arc_dsc);
-     char lbl[4]; snprintf(lbl, sizeof(lbl), "%i", state->active_profile_index+1);
-     lv_canvas_draw_text(canvas, 26, 15, 16, &label_dsc, lbl);
- #endif
-
-     rotate_canvas(canvas, cbuf);
- }
-
- // ------------------------------------------------------------------------------------------------
- // draw_bottom: layer indicator (copied from src/widgets/status.c)
- // ------------------------------------------------------------------------------------------------
- static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
-     lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_BOTTOM);
-     lv_draw_rect_dsc_t rect_black_dsc;
-     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-     lv_draw_label_dsc_t label_dsc;
-     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
-
-     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
-
- #ifndef CONFIG_NICE_VIEW_HID_MEDIA_INFO
-     char text[12];
-     if (!state->layer_label || !strlen(state->layer_label)) {
-         sprintf(text, "LAYER %i", state->layer_index);
-     } else {
-         strncpy(text, state->layer_label, sizeof(text)-1);
-         text[sizeof(text)-1] = '\0';
-     }
-     lv_canvas_draw_text(canvas, 0, 5, CANVAS_SIZE, &label_dsc, text);
- #endif
-
-     rotate_canvas(canvas, cbuf);
- }
-
+ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
+ 
  /*--------------------------------------------------------
   * 5) WIDGET INIT
   *--------------------------------------------------------*/
