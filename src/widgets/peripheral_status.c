@@ -22,10 +22,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 #include <nice_view_hid/hid.h>
-#include "status.h"  // brings in widget_media_title_init, widget_media_artist_init, etc.
 #endif
 
-#include "peripheral_status.h"
+#include "status.h"  // brings in widget_media_title_init, widget_media_artist_init, etc.
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
