@@ -25,8 +25,6 @@
 #include <nice_view_hid/hid.h> // for media_title_notification, etc.
 #endif
 
-#include "peripheral_status.h"
-
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 struct peripheral_status_state {
