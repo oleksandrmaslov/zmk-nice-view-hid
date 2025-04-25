@@ -26,7 +26,7 @@
  #include <nice_view_hid/hid.h>
  #endif
  
-#include "status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE :contentReference[oaicite:0]{index=0}
+#include "peripheral_status.h"    // for struct status_state, WIDGET_TOP/MIDDLE/HID/BOTTOM, CANVAS_SIZE :contentReference[oaicite:0]{index=0}
  
  static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
  
