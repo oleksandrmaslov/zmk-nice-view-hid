@@ -20,31 +20,26 @@
  #include <zmk/usb.h>
  #include <zmk/ble.h>
 
-#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO       // for struct status_state, widget_media_* symbols
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO            // for struct status_state, widget_media_* symbols
 #include <nice_view_hid/hid.h> // for media_title_notification, etc.
 #endif
 
 #include "peripheral_status.h"
-#include <raw_hid/events.h>                // for raw_hid_received_event
-#include <zmk/split/transport/peripheral.h>
-#include <zmk/event_manager.h>            // for ZMK_SPLIT_PERIPHERAL_BIND
+#include <zmk/event_manager.h> 
+#include <raw_hid/events.h>
+#include <zmk/split/bluetooth/transport/peripheral.h>
 
-// Forward Raw HID packets from the central half back into the local HID event stream
-static void split_raw_hid_handler(
-    const struct zmk_split_transport_peripheral_command *cmd)
-{
-    if (cmd->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        return;
-    }
+// this macro expands to a proper listener that only fires
+// when type == RAW_HID, and hands you (data, length)
+ZMK_SPLIT_PERIPHERAL_BIND_RAW_HID(split_raw_hid_handler);
+
+static void split_raw_hid_handler(const uint8_t *data, size_t length) {
     struct raw_hid_received_event evt = {
-        .data   = (uint8_t *)cmd->data.raw_hid.data,
-        .length = CONFIG_RAW_HID_REPORT_SIZE,
+        .data   = (uint8_t *)data,
+        .length = length,
     };
     raise_raw_hid_received_event(evt);
 }
-ZMK_SPLIT_PERIPHERAL_BIND(
-    ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID,
-    split_raw_hid_handler);
 
 // Local media‐widget update callbacks
 static void media_title_cb(const struct media_title_notification *notif) {
