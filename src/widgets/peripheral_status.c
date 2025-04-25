@@ -20,8 +20,7 @@
  #include <zmk/usb.h>
  #include <zmk/ble.h>
 
-#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
-#include "status.h"            // for struct status_state, widget_media_* symbols
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO       // for struct status_state, widget_media_* symbols
 #include <nice_view_hid/hid.h> // for media_title_notification, etc.
 #endif
 
