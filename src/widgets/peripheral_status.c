@@ -27,7 +27,7 @@
 #include "peripheral_status.h"
 #include <zmk/event_manager.h> 
 #include <raw_hid/events.h>
-#include <zmk/split/bluetooth/peripheral.h>
+#include <zmk/split/transport/peripheral.h>
 
 // this macro expands to a proper listener that only fires
 // when type == RAW_HID, and hands you (data, length)
