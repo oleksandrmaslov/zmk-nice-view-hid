@@ -27,7 +27,7 @@ struct status_state {
     const char *layer_label;
 #endif
 
-#ifdef CONFIG_RAW_HID
+#if defined(CONFIG_RAW_HID) || defined(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
     bool is_connected;
     uint8_t hour;
     uint8_t minute;
