@@ -20,19 +20,17 @@ ZMK_EVENT_DECLARE(time_notification);
 struct volume_notification {
     uint8_t value;
 };
-
 ZMK_EVENT_DECLARE(volume_notification);
 
-struct media_title_notification {
-    char title[32];
-};
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 
-struct media_artist_notification {
-    char artist[32];
-};
+struct media_title_notification  { char title[32]; };
+struct media_artist_notification { char artist[32]; };
 
 ZMK_EVENT_DECLARE(media_title_notification);
 ZMK_EVENT_DECLARE(media_artist_notification);
+
+#endif
 
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
 struct layout_notification {
