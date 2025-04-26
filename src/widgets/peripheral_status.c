@@ -169,37 +169,36 @@
  /* -------------------------------------------------------------------------- */
  static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
  
- /* ========================================================================== */
- /* 1) RAW‑HID: intercept split‑transport central commands                     */
- /* ========================================================================== */
- /* ------------------------------------------------------------- *
- * Split-transport peripheral event hook – runs for every
- * central command after ZMK core has processed it.
- * ------------------------------------------------------------- */
-int zmk_split_transport_peripheral_command_handler(
+ /* ========================================================================
+ * 1) RAW-HID: hook into the peripheral transport via report_event
+ * ====================================================================== */
+
+#include <zmk/split/transport/types.h>   /* for command enum */
+
+/* our callback — different name → no duplicate symbol */
+static int raw_hid_report_event_cb(
     const struct zmk_split_transport_peripheral *transport,
-    struct zmk_split_transport_central_command cmd)
+    struct zmk_split_transport_central_command  *cmd)
 {
-    /* run core handler first (it’s weak, so use alias provided by ZMK) */
-    extern int __weak __zmk_split_transport_peripheral_command_handler(
-        const struct zmk_split_transport_peripheral *,
-        struct zmk_split_transport_central_command);
-
-    int ret = 0;
-    if (&__zmk_split_transport_peripheral_command_handler) {
-        ret = __zmk_split_transport_peripheral_command_handler(transport, cmd);
+    if (cmd->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        return 0;   /* ignore everything but RAW-HID */
     }
 
-    if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        struct raw_hid_received_event evt = {
-            .length = ARRAY_SIZE(cmd.data.raw_hid.data),
-        };
-        memcpy(evt.data, cmd.data.raw_hid.data, evt.length);
-        LOG_DBG("re-emit RAW-HID id 0x%02X", evt.data[0]);
-        raise_raw_hid_received_event(evt);
-    }
-    return ret;
+    struct raw_hid_received_event hid = {
+        .length = ARRAY_SIZE(cmd->data.raw_hid.data),
+    };
+    memcpy(hid.data, cmd->data.raw_hid.data, hid.length);
+    LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
+    raise_raw_hid_received_event(hid);
+    return 0;
 }
+
+/* Register our callback for every peripheral transport */
+static const struct zmk_split_transport_peripheral_api raw_hid_api = {
+    .report_event = raw_hid_report_event_cb,
+};
+
+ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(raw_hid_periph, &raw_hid_api);
 
 /* ========================================================================== */
  /* 2) Battery‑status widget helpers                                           */
