@@ -172,41 +172,34 @@
  /* ========================================================================== */
  /* 1) RAW‑HID: intercept split‑transport central commands                     */
  /* ========================================================================== */
- /*
-  * The stock handler is declared in split/transport/peripheral.h. We provide
-  * our own wrapper that first lets the default logic run, then emits a
-  * raw_hid_received_event so that the rest of ZMK (and this widget) can react.
-  */
- __attribute__((weak)) int zmk_split_transport_peripheral_command_handler(
-     const struct zmk_split_transport_peripheral *transport,
-     struct zmk_split_transport_central_command cmd)
- {
-     /* Call the next handler in the link‑order chain, if any.  Because this
-      * symbol is weak, the linker will pick our implementation last; any other
-      * strong definition (e.g. the vanilla one in ZMK) will be preferred and
-      * we will not be linked in twice.  Therefore, forward only when another
-      * implementation exists. */
-     extern __attribute__((weak)) int __zmk_orig_split_transport_peripheral_command_handler(
-         const struct zmk_split_transport_peripheral *,
-         struct zmk_split_transport_central_command);
- 
-     int ret = 0;
-     if (__zmk_orig_split_transport_peripheral_command_handler) {
-         ret = __zmk_orig_split_transport_peripheral_command_handler(transport, cmd);
-     }
- 
-     if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        struct raw_hid_received_event evt = {
-            .data   = cmd.data.raw_hid.data,
-            .length = ARRAY_SIZE(cmd.data.raw_hid.data),   /* = 32 bytes */
-        };
-        LOG_DBG("interceptor: re-emit RAW-HID id 0x%02X", cmd.data.raw_hid.data[0]);
-        raise_raw_hid_received_event(evt);
+ /* ------------------------------------------------------------- *
+ * Split-transport peripheral event hook – runs for every
+ * central command after ZMK core has processed it.
+ * ------------------------------------------------------------- */
+static int raw_hid_report_event_cb(
+    const struct zmk_split_transport_peripheral_event *ev)
+{
+    if (ev->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        return 0;               /* not our packet */
     }
-     return ret;
- }
- 
- /* ========================================================================== */
+
+    struct raw_hid_received_event hid = {
+        .length = ARRAY_SIZE(ev->data.raw_hid.data),
+    };
+    memcpy(hid.data, ev->data.raw_hid.data, hid.length);
+    LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
+    raise_raw_hid_received_event(hid);
+    return 0;
+}
+
+static const struct zmk_split_transport_peripheral_api raw_hid_api = {
+    .report_event = raw_hid_report_event_cb,
+};
+
+/* Put our handler in the linker section so the core iterates over it */
+ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(raw_hid_periph, &raw_hid_api);
+
+/* ========================================================================== */
  /* 2) Battery‑status widget helpers                                           */
  /* ========================================================================== */
  static void set_battery(struct zmk_widget_status *w, struct battery_status_state st)
