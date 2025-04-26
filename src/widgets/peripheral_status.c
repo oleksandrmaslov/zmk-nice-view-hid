@@ -173,21 +173,26 @@
  * 1) RAW-HID: hook into the peripheral transport via report_event
  * ====================================================================== */
 
-#include <zmk/split/transport/types.h>   /* for command enum */
-
-/* our callback — different name → no duplicate symbol */
+/* ------------------------------------------------------------------ */
+/* Split-transport hook: runs after the core handler on the           */
+/* peripheral side whenever the central sends a command.              */
+/* ------------------------------------------------------------------ */
 static int raw_hid_report_event_cb(
-    const struct zmk_split_transport_peripheral *transport,
-    struct zmk_split_transport_central_command  *cmd)
+    const struct zmk_split_transport_peripheral_event *ev)
 {
-    if (cmd->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        return 0;   /* ignore everything but RAW-HID */
+    /* We only care about events that *are* central commands …          */
+    if (ev->type != ZMK_SPLIT_PERIPHERAL_EVENT_CENTRAL_CMD) {
+        return 0;
+    }
+    /* … and the command must be RAW-HID                               */
+    if (ev->cmd.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        return 0;
     }
 
     struct raw_hid_received_event hid = {
-        .length = ARRAY_SIZE(cmd->data.raw_hid.data),
+        .length = ARRAY_SIZE(ev->cmd.data.raw_hid.data),
     };
-    memcpy(hid.data, cmd->data.raw_hid.data, hid.length);
+    memcpy(hid.data, ev->cmd.data.raw_hid.data, hid.length);
     LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
     raise_raw_hid_received_event(hid);
     return 0;
