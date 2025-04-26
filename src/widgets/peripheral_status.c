@@ -176,29 +176,30 @@
  * Split-transport peripheral event hook – runs for every
  * central command after ZMK core has processed it.
  * ------------------------------------------------------------- */
-static int raw_hid_report_event_cb(
-    const struct zmk_split_transport_peripheral_event *ev)
+int zmk_split_transport_peripheral_command_handler(
+    const struct zmk_split_transport_peripheral *transport,
+    struct zmk_split_transport_central_command cmd)
 {
-    if (ev->type != ZMK_SPLIT_PERIPHERAL_EVENT_CENTRAL_CMD ||
-        ev->cmd.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        return 0;
+    /* run core handler first (it’s weak, so use alias provided by ZMK) */
+    extern int __weak __zmk_split_transport_peripheral_command_handler(
+        const struct zmk_split_transport_peripheral *,
+        struct zmk_split_transport_central_command);
+
+    int ret = 0;
+    if (&__zmk_split_transport_peripheral_command_handler) {
+        ret = __zmk_split_transport_peripheral_command_handler(transport, cmd);
     }
 
-    struct raw_hid_received_event hid = {
-        .length = ARRAY_SIZE(ev->cmd.data.raw_hid.data),
-    };
-    memcpy(hid.data, ev->cmd.data.raw_hid.data, hid.length);
-    LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
-    raise_raw_hid_received_event(hid);
-    return 0;
+    if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        struct raw_hid_received_event evt = {
+            .length = ARRAY_SIZE(cmd.data.raw_hid.data),
+        };
+        memcpy(evt.data, cmd.data.raw_hid.data, evt.length);
+        LOG_DBG("re-emit RAW-HID id 0x%02X", evt.data[0]);
+        raise_raw_hid_received_event(evt);
+    }
+    return ret;
 }
-
-static const struct zmk_split_transport_peripheral_api raw_hid_api = {
-    .report_event = raw_hid_report_event_cb,
-};
-
-/* Put our handler in the linker section so the core iterates over it */
-ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(raw_hid_periph, &raw_hid_api);
 
 /* ========================================================================== */
  /* 2) Battery‑status widget helpers                                           */
