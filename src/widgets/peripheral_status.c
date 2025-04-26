@@ -200,6 +200,7 @@
             .data   = cmd.data.raw_hid.data,
             .length = ARRAY_SIZE(cmd.data.raw_hid.data),   /* = 32 bytes */
         };
+        LOG_DBG("interceptor: re-emit RAW-HID id 0x%02X", cmd.data.raw_hid.data[0]);
         raise_raw_hid_received_event(evt);
     }
      return ret;
