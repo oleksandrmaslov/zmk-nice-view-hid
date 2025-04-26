@@ -264,35 +264,91 @@
  ZMK_DISPLAY_WIDGET_LISTENER(widget_periph_conn, struct periph_conn_state, conn_cb, conn_get)
  ZMK_SUBSCRIPTION(widget_periph_conn, zmk_split_peripheral_status_changed);
  
- /* -------------------------------------------------------------------------- */
- /* 4) Now‑playing media info (optional)                                       */
- /* -------------------------------------------------------------------------- */
- #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
- /*  — implementation identical to status.c; omitted for brevity               */
- #endif
- 
- /* ========================================================================== */
- /* 5) Widget initialisation                                                   */
- /* ========================================================================== */
- int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent)
- {
-     widget->obj = lv_obj_create(parent);
-     lv_obj_set_size(widget->obj, 160, 68);
- 
-     /* Canvas buffers */
-     lv_obj_t *top = lv_canvas_create(widget->obj);
-     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
-     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
- 
-     sys_slist_append(&widgets, &widget->node);
-     widget_battery_status_init();
-     widget_periph_conn_init();
- 
-     /* First render */
-     memset(&widget->state, 0, sizeof(widget->state));
-     draw_top(widget->obj, widget->cbuf, &widget->state);
- 
-     return 0;
- }
- 
- lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget) { return widget->obj; }
+ /* ---------- media title ---------- */
+static struct media_title_notification get_title(const zmk_event_t *e) {
+    const struct media_title_notification *n = as_media_title_notification(e);
+    return n ? *n : (struct media_title_notification){ .title = "" };
+}
+static void title_cb(struct media_title_notification t) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        strncpy(w->state.track_title, t.title,
+                sizeof(w->state.track_title) - 1);
+        w->state.track_title[sizeof(w->state.track_title)-1] = '\0';
+        lv_label_set_text(w->label_track,
+            w->state.track_title[0] ? w->state.track_title : "No media");
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title,
+    struct media_title_notification, title_cb, get_title)
+ZMK_SUBSCRIPTION(widget_media_title, media_title_notification)
+
+/* ---------- media artist ---------- */
+static struct media_artist_notification get_artist(const zmk_event_t *e) {
+    const struct media_artist_notification *n = as_media_artist_notification(e);
+    return n ? *n : (struct media_artist_notification){ .artist = "" };
+}
+static void artist_cb(struct media_artist_notification a) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        if (w->state.track_title[0]) {
+            strncpy(w->state.track_artist, a.artist,
+                    sizeof(w->state.track_artist) - 1);
+            w->state.track_artist[sizeof(w->state.track_artist)-1] = '\0';
+            lv_label_set_text(w->label_artist, w->state.track_artist);
+        }
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist,
+    struct media_artist_notification, artist_cb, get_artist)
+ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification)
+
+int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent)
+{
+    widget->obj = lv_obj_create(parent);
+    lv_obj_set_size(widget->obj, 160, 68);
+
+    /* Canvas buffers */
+    lv_obj_t *top = lv_canvas_create(widget->obj);
+    lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_INFO)
+    /* "Now Playing" + track + artist labels ----------------------------- */
+    widget->label_now = lv_label_create(widget->obj);
+    lv_obj_set_style_text_font(widget->label_now,
+                               &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_label_set_text_static(widget->label_now, "Now Playing");
+    lv_obj_set_pos(widget->label_now, 0, 32);
+
+    widget->label_track = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_track, 160);
+    lv_obj_set_style_text_font(widget->label_track,
+                               &lv_font_montserrat_18, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widget->label_track,
+                           LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(widget->label_track, "No media");
+    lv_obj_set_pos(widget->label_track, 0, 44);
+
+    widget->label_artist = lv_label_create(widget->obj);
+    lv_obj_set_width(widget->label_artist, 160);
+    lv_obj_set_style_text_font(widget->label_artist,
+                               &lv_font_montserrat_12, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widget->label_artist,
+                           LV_LABEL_LONG_DOT);
+    lv_label_set_text(widget->label_artist, "");
+    lv_obj_set_pos(widget->label_artist, 0, 56);
+#endif
+
+    sys_slist_append(&widgets, &widget->node);
+    widget_battery_status_init();
+    widget_periph_conn_init();
+    widget_media_title_init();
+    widget_media_artist_init();
+
+    /* First render */
+    memset(&widget->state, 0, sizeof(widget->state));
+    draw_top(widget->obj, widget->cbuf, &widget->state);
+
+    return 0;
+}
