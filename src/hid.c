@@ -9,8 +9,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 ZMK_EVENT_IMPL(is_connected_notification);
 ZMK_EVENT_IMPL(time_notification);
 ZMK_EVENT_IMPL(volume_notification);
+
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
 ZMK_EVENT_IMPL(media_title_notification);
 ZMK_EVENT_IMPL(media_artist_notification);
+#endif
+
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
 ZMK_EVENT_IMPL(layout_notification);
 #endif
@@ -19,8 +23,10 @@ enum decode_id {
     _TIME          = 0xAA,
     _VOLUME        = 0xAB,
     _LAYOUT        = 0xAC,
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
     _MEDIA_ARTIST  = 0xAD,
     _MEDIA_TITLE   = 0xAE,
+#endif
 };
 
 static bool is_connected = false;
@@ -60,20 +66,20 @@ static int process_raw_hid_data(const uint8_t *data)
             on_volume_timer(&volume_timer);
         }
         break;
-    case _MEDIA_ARTIST: {
-        struct media_artist_notification n = { .artist = {0} };
-        strncpy(n.artist, (const char *)&data[2], sizeof(n.artist) - 1);
-        ZMK_EVENT_RAISE(media_artist_notification, n);
-        LOG_DBG("artist = %s", n.artist);
-        break;
-    }
+#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
     case _MEDIA_TITLE: {
-        struct media_title_notification n = { .title = {0} };
-        strncpy(n.title, (const char *)&data[2], sizeof(n.title) - 1);
-        ZMK_EVENT_RAISE(media_title_notification, n);
-        LOG_DBG("title = %s", n.title);
+        struct media_title_notification n = {0};
+        strncpy(n.title, (char *)&data[2], sizeof(n.title)-1);
+        raise_media_title_notification(n);
         break;
     }
+    case _MEDIA_ARTIST: {
+        struct media_artist_notification n = {0};
+        strncpy(n.artist, (char *)&data[2], sizeof(n.artist)-1);
+        raise_media_artist_notification(n);
+        break;
+    }
+#endif
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     case _LAYOUT:
         raise_layout_notification((struct layout_notification){.value = data[1]});
