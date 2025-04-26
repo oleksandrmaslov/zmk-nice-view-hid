@@ -15,13 +15,13 @@ ZMK_EVENT_IMPL(media_artist_notification);
 ZMK_EVENT_IMPL(layout_notification);
 #endif
 
-typedef enum {
-    _TIME = 0xAA,
-    _VOLUME,
-    _LAYOUT,
-    _MEDIA_ARTIST = 0xAD,
-    _MEDIA_TITLE,
-} hid_data_type;
+enum decode_id {
+    _TIME          = 0xAA,
+    _VOLUME        = 0xAB,
+    _LAYOUT        = 0xAC,
+    _MEDIA_ARTIST  = 0xAD,
+    _MEDIA_TITLE   = 0xAE,
+};
 
 static bool is_connected = false;
 
@@ -47,59 +47,40 @@ static void on_volume_timer(struct k_timer *dummy) {
 
 K_TIMER_DEFINE(volume_timer, on_volume_timer, NULL);
 
-static void process_raw_hid_data(uint8_t *data) {
-    LOG_INF("display_process_raw_hid_data - received data_type %u", data[0]);
-
-    // raise disconnect notification after 65 seconds of inactivity
-    k_timer_start(&disconnect_timer, K_SECONDS(65), K_NO_WAIT);
-    if (!is_connected) {
-        LOG_INF("raise_connection_notification: true");
-        is_connected = true;
-        raise_is_connected_notification((struct is_connected_notification){.value = true});
-    }
-
-    uint8_t data_type = data[0];
-    switch (data_type) {
+static int process_raw_hid_data(const uint8_t *data)
+{
+    switch (data[0]) {
     case _TIME:
         raise_time_notification((struct time_notification){.hour = data[1], .minute = data[2]});
         break;
-
     case _VOLUME:
         last_hid_volume = data[1];
-
-        // debounce volume change events
         if (k_timer_status_get(&volume_timer) > 0 || k_timer_remaining_get(&volume_timer) == 0) {
             k_timer_start(&volume_timer, K_MSEC(150), K_NO_WAIT);
             on_volume_timer(&volume_timer);
         }
-
         break;
-
     case _MEDIA_ARTIST: {
-        uint8_t len = data[1];
-        if (len > 31) len = 31;
-        struct media_artist_notification notif = {.artist = {0}};
-        memcpy(notif.artist, data + 2, len);
-        notif.artist[len] = '\0';
-        raise_media_artist_notification(notif);
+        struct media_artist_notification n = { .artist = {0} };
+        strncpy(n.artist, (const char *)&data[2], sizeof(n.artist) - 1);
+        ZMK_EVENT_RAISE(media_artist_notification, n);
+        LOG_DBG("artist = %s", n.artist);
         break;
     }
     case _MEDIA_TITLE: {
-        uint8_t len = data[1];
-        if (len > 31) len = 31;
-        struct media_title_notification notif = {.title = {0}};
-        memcpy(notif.title, data + 2, len);
-        notif.title[len] = '\0';
-        raise_media_title_notification(notif);
+        struct media_title_notification n = { .title = {0} };
+        strncpy(n.title, (const char *)&data[2], sizeof(n.title) - 1);
+        ZMK_EVENT_RAISE(media_title_notification, n);
+        LOG_DBG("title = %s", n.title);
         break;
     }
-
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
     case _LAYOUT:
         raise_layout_notification((struct layout_notification){.value = data[1]});
         break;
 #endif
     }
+    return 0;
 }
 
 static int raw_hid_received_event_listener(const zmk_event_t *eh) {
