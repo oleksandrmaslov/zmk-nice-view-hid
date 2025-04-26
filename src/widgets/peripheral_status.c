@@ -196,12 +196,12 @@
      }
  
      if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-         struct raw_hid_received_event evt = {
-             .data   = cmd.data.raw_hid.data,
-             .length = sizeof(cmd.data.raw_hid.data),
-         };
-         raise_raw_hid_received_event(evt);
-     }
+        struct raw_hid_received_event evt = {
+            .data   = cmd.data.raw_hid.data,
+            .length = ARRAY_SIZE(cmd.data.raw_hid.data),   /* = 32 bytes */
+        };
+        raise_raw_hid_received_event(evt);
+    }
      return ret;
  }
  
