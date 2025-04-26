@@ -55,7 +55,10 @@ void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *st
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
 
-    char txt[10] = "";
+    char txt[12] = "";
+
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    /* ---- Central build: show USB/BLE endpoint status ---- */
     switch (state->selected_endpoint.transport) {
     case ZMK_TRANSPORT_USB:
         strcat(txt, LV_SYMBOL_USB);
@@ -70,6 +73,11 @@ void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *st
     default:
         break;
     }
+#else
+    /* ---- Peripheral build: show connection to central ---- */
+    strcat(txt, state->connected ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+#endif
+
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &lbl, txt);
 
     rotate_canvas(canvas, cbuf);
