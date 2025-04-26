@@ -179,14 +179,15 @@
 static int raw_hid_report_event_cb(
     const struct zmk_split_transport_peripheral_event *ev)
 {
-    if (ev->type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-        return 0;               /* not our packet */
+    if (ev->type != ZMK_SPLIT_PERIPHERAL_EVENT_CENTRAL_CMD ||
+        ev->cmd.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
+        return 0;
     }
 
     struct raw_hid_received_event hid = {
-        .length = ARRAY_SIZE(ev->data.raw_hid.data),
+        .length = ARRAY_SIZE(ev->cmd.data.raw_hid.data),
     };
-    memcpy(hid.data, ev->data.raw_hid.data, hid.length);
+    memcpy(hid.data, ev->cmd.data.raw_hid.data, hid.length);
     LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
     raise_raw_hid_received_event(hid);
     return 0;
