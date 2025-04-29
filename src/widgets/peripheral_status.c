@@ -167,42 +167,34 @@
  /* -------------------------------------------------------------------------- */
  /*  Global list of instantiated widgets                                       */
  /* -------------------------------------------------------------------------- */
- static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
- 
- /* ========================================================================
- * 1) RAW-HID: hook into the peripheral transport via report_event
- * ====================================================================== */
+static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-/* ------------------------------------------------------------------ */
-/* Split-transport hook: runs after the core handler on the           */
-/* peripheral side whenever the central sends a command.              */
-/* ------------------------------------------------------------------ */
-// static int raw_hid_report_event_cb(
-//     const struct zmk_split_transport_peripheral_event *ev) {
-//     /* We only care about events that *are* central commands …          */
-//     if (ev->type != ZMK_SPLIT_PERIPHERAL_EVENT_CENTRAL_CMD) {
-//         return 0;
-//     }
-//     /* … and the command must be RAW-HID                               */
-//     if (ev->cmd.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_RAW_HID) {
-//         return 0;
-//     }
+/* ======================================================================== */
+/* RAW-HID "Now Playing" handler                                            */
+/* ======================================================================== */
+static lv_obj_t *now_playing_label = NULL;
 
-//     struct raw_hid_received_event hid = {
-//         .length = ARRAY_SIZE(ev->cmd.data.raw_hid.data),
-//     };
-//     memcpy(hid.data, ev->cmd.data.raw_hid.data, hid.length);
-//     LOG_DBG("re-emit RAW-HID id 0x%02X", hid.data[0]);
-//     raise_raw_hid_received_event(hid);
-//     return 0;
-// }
+static int peripheral_now_playing_listener(const zmk_event_t *eh) {
+    struct raw_hid_received_event *event = as_raw_hid_received_event(eh);
+    if (!event) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
 
-/* Register our callback for every peripheral transport */
-// static const struct zmk_split_transport_peripheral_api raw_hid_api = {
-//     .report_event = raw_hid_report_event_cb,
-// };
+    // The packet is a null-terminated string with "Title - Artist"
+    char now_playing_text[33] = {0};
+    size_t len = (event->length < sizeof(now_playing_text)-1) ? event->length : (sizeof(now_playing_text)-1);
+    memcpy(now_playing_text, event->data, len);
 
-// ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(raw_hid_periph, &raw_hid_api);
+    // Update the Nice!View widget's label
+    if (now_playing_label) {
+        lv_label_set_text(now_playing_label, now_playing_text);
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(npf_display, peripheral_now_playing_listener);
+ZMK_SUBSCRIPTION(npf_display, raw_hid_received_event);
 
 /* ========================================================================== */
  /* 2) Battery‑status widget helpers                                           */
@@ -261,8 +253,8 @@
  }
  
  ZMK_DISPLAY_WIDGET_LISTENER(widget_periph_conn, struct periph_conn_state, conn_cb, conn_get)
- ZMK_SUBSCRIPTION(widget_periph_conn, zmk_split_peripheral_status_changed);
- 
+ ZMK_SUBSCRIPTION(widget_periph_conn, zmk_split_peripheral_status_changed); 
+
  /* ---------- media title ---------- */
 static struct media_title_notification get_title(const zmk_event_t *e) {
     const struct media_title_notification *n = as_media_title_notification(e);
@@ -351,10 +343,10 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent)
 
     return 0;
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Public accessor – required by custom_status_screen.c                      */
-/* -------------------------------------------------------------------------- */
+ 
+ /* -------------------------------------------------------------------------- */
+ /*  Public accessor – required by custom_status_screen.c                      */
+ /* -------------------------------------------------------------------------- */
 lv_obj_t *zmk_widget_status_obj(struct zmk_widget_status *widget)
 {
     return widget->obj;
