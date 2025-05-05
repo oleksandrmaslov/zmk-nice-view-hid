@@ -23,10 +23,8 @@ enum decode_id {
     _TIME          = 0xAA,
     _VOLUME        = 0xAB,
     _LAYOUT        = 0xAC,
-#ifdef CONFIG_NICE_VIEW_HID_MEDIA_INFO
     _MEDIA_ARTIST  = 0xAD,
     _MEDIA_TITLE   = 0xAE,
-#endif
 };
 
 static bool is_connected = false;
