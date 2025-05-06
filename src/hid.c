@@ -19,14 +19,6 @@ ZMK_EVENT_IMPL(media_artist_notification);
 ZMK_EVENT_IMPL(layout_notification);
 #endif
 
-enum decode_id {
-    _TIME          = 0xAA,
-    _VOLUME        = 0xAB,
-    _LAYOUT        = 0xAC,
-    _MEDIA_ARTIST  = 0xAD,
-    _MEDIA_TITLE   = 0xAE,
-};
-
 static bool is_connected = false;
 
 static void on_disconnect_timer(struct k_timer *dummy) {
