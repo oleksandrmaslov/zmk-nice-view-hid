@@ -20,3 +20,16 @@
         zephyr,display = &nice_view;
     };
 };
+
+/ {
+    now_playing_dev: now_playing_dev {
+        compatible = "zmk,output-split-output-relay";
+        #binding-cells = <0>;
+    };
+
+    now_playing_relay {
+        compatible = "zmk,split-peripheral-output-relay";
+        device = <&now_playing_dev>;
+        relay-channel = <1>;
+    };
+};
