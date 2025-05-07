@@ -20,19 +20,3 @@
         zephyr,display = &nice_view;
     };
 };
-
-/ {
-    /* this one is already correct */
-    now_playing_dev: now_playing_dev {
-        compatible = "zmk,output-split-output-relay";
-        #binding-cells = <0>;
-        status = "okay";
-    };
-
-   now_playing_relay: now_playing_relay {
-        compatible = "zmk,split-peripheral-output-relay";
-        device = <&now_playing_dev>;
-        relay-channel = <1>;
-        status = "okay";
-    };
-};
