@@ -4,6 +4,8 @@
 
 #ifdef CONFIG_RAW_HID
 
+#define NICE_VIEW_HID_TEXT_MAX_LEN 30
+
 struct is_connected_notification {
     bool value;
 };
@@ -22,6 +24,18 @@ struct volume_notification {
 };
 
 ZMK_EVENT_DECLARE(volume_notification);
+
+struct media_artist_notification {
+    char value[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
+};
+
+ZMK_EVENT_DECLARE(media_artist_notification);
+
+struct media_title_notification {
+    char value[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
+};
+
+ZMK_EVENT_DECLARE(media_title_notification);
 
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
 struct layout_notification {

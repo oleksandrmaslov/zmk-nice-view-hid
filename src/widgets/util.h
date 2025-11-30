@@ -7,6 +7,7 @@
 
 #include <lvgl.h>
 #include <zmk/endpoints.h>
+#include <nice_view_hid/hid.h>
 
 #define CANVAS_SIZE 68
 
@@ -25,15 +26,17 @@ struct status_state {
     bool active_profile_bonded;
     uint8_t layer_index;
     const char *layer_label;
-#ifdef CONFIG_RAW_HID
+#elif IS_ENABLED(CONFIG_ZMK_SPLIT)
+    bool connected;
+#endif
+#if IS_ENABLED(CONFIG_RAW_HID)
     bool is_connected;
     uint8_t hour;
     uint8_t minute;
     uint8_t volume;
     uint8_t layout;
-#endif
-#else
-    bool connected;
+    char media_artist[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
+    char media_title[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
 #endif
 };
 
