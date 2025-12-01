@@ -226,14 +226,14 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 
     widget->title_label = lv_label_create(widget->obj);
     lv_obj_align(widget->title_label, LV_ALIGN_TOP_LEFT, 6, 4);
-    lv_obj_set_width(widget->title_label, 86);
+    lv_obj_set_width(widget->title_label, 140);
     lv_label_set_long_mode(widget->title_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_style_text_font(widget->title_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(widget->title_label, LVGL_FOREGROUND, 0);
 
     widget->artist_label = lv_label_create(widget->obj);
     lv_obj_align(widget->artist_label, LV_ALIGN_TOP_LEFT, 6, 36);
-    lv_obj_set_width(widget->artist_label, 86);
+    lv_obj_set_width(widget->artist_label, 140);
     lv_label_set_long_mode(widget->artist_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_style_text_font(widget->artist_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(widget->artist_label, LVGL_FOREGROUND, 0);
