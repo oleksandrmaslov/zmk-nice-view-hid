@@ -6,7 +6,10 @@ config NICE_VIEW_HID
     imply ZMK_DISPLAY
     select LV_USE_IMG
     select LV_USE_CANVAS
+    select LV_FONT_MONTSERRAT_14
+    select LV_FONT_MONTSERRAT_16
     select LV_FONT_MONTSERRAT_18
+    select LV_FONT_MONTSERRAT_20
     select LV_FONT_MONTSERRAT_22
 
 config NICE_VIEW_HID_TWO_PROFILES
@@ -22,6 +25,21 @@ config NICE_VIEW_HID_LAYOUTS
 
 config NICE_VIEW_HID_INVERTED
     bool "Invert widget colors"
+
+config NICE_VIEW_HID_MEDIA_SCROLL
+    bool "Scroll overflowing media text"
+    default n
+
+config NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS
+    int "Media scroll interval"
+    default 350
+    depends on NICE_VIEW_HID_MEDIA_SCROLL
+
+config NICE_VIEW_HID_MEDIA_SCROLL_MIN_BATTERY
+    int "Minimum battery percentage for media scrolling"
+    range 0 100
+    default 25
+    depends on NICE_VIEW_HID_MEDIA_SCROLL
 
 config LV_DPI_DEF
     default 161

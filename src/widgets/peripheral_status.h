@@ -17,7 +17,7 @@ struct zmk_widget_status {
     lv_obj_t *top_canvas;
     lv_obj_t *title_label;
     lv_obj_t *artist_label;
-    lv_color_t cbuf[CANVAS_SIZE * CANVAS_SIZE];
+    uint8_t cbuf[CANVAS_BUF_SIZE];
     struct status_state state;
 };
 
