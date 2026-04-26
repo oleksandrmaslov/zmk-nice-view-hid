@@ -5,7 +5,6 @@ if(CONFIG_NICE_VIEW_HID)
   endif()
 
   zephyr_library_sources(src/custom_status_screen.c)
-  zephyr_library_sources(src/widgets/bolt.c)
   zephyr_library_sources(src/widgets/util.c)
 
   if(NOT CONFIG_ZMK_SPLIT OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)

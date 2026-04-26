@@ -4,7 +4,7 @@
 config NICE_VIEW_HID
     bool "Enable nice!view display with Raw HID"
     imply ZMK_DISPLAY
-    select LV_USE_IMG
+    select LV_USE_IMAGE
     select LV_USE_CANVAS
     select LV_FONT_MONTSERRAT_14
     select LV_FONT_MONTSERRAT_16

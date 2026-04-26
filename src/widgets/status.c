@@ -79,33 +79,6 @@ static void draw_foreground_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) 
     canvas_draw_rect(canvas, x, y, 1, 1, &rect_dsc);
 }
 
-static void draw_bluetooth_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    draw_line(canvas, x + 5, y + 1, x + 5, y + 17, 1);
-    draw_line(canvas, x + 5, y + 1, x + 11, y + 6, 1);
-    draw_line(canvas, x + 11, y + 6, x + 5, y + 10, 1);
-    draw_line(canvas, x + 5, y + 10, x + 11, y + 14, 1);
-    draw_line(canvas, x + 11, y + 14, x + 5, y + 17, 1);
-    draw_line(canvas, x + 2, y + 5, x + 5, y + 8, 1);
-    draw_line(canvas, x + 2, y + 14, x + 5, y + 11, 1);
-}
-
-static void draw_usb_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-
-    draw_line(canvas, x + 6, y + 2, x + 6, y + 15, 1);
-    draw_line(canvas, x + 2, y + 8, x + 10, y + 8, 1);
-    draw_line(canvas, x + 10, y + 8, x + 12, y + 6, 1);
-    canvas_draw_rect(canvas, x + 5, y + 1, 3, 3, &rect_dsc);
-    canvas_draw_rect(canvas, x + 1, y + 7, 3, 3, &rect_dsc);
-    canvas_draw_rect(canvas, x + 11, y + 5, 3, 3, &rect_dsc);
-}
-
-static void draw_close_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    draw_line(canvas, x + 2, y + 4, x + 12, y + 14, 2);
-    draw_line(canvas, x + 12, y + 4, x + 2, y + 14, 2);
-}
-
 static void draw_open_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     for (uint8_t i = 0; i < 10; i += 2) {
         draw_foreground_pixel(canvas, x + i, y);
@@ -166,19 +139,26 @@ static void draw_profile_row(lv_obj_t *canvas, const struct status_state *state,
 
 static void draw_output_icon(lv_obj_t *canvas, const struct status_state *state) {
     if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
-        draw_usb_icon(canvas, 51, 2);
+        draw_elemental_usb_logo(canvas, 45, 8);
         return;
     }
 
     if (state->active_profile_bonded) {
         if (state->active_profile_connected) {
-            draw_bluetooth_icon(canvas, 52, 1);
+            draw_elemental_bluetooth_logo(canvas, 52, 3);
         } else {
-            draw_close_icon(canvas, 52, 2);
+            draw_elemental_bluetooth_logo_outlined(canvas, 52, 3);
         }
     } else {
-        draw_open_profile_icon(canvas, 54, 5);
+        draw_elemental_bluetooth_searching(canvas, 52, 3);
     }
+
+    lv_draw_label_dsc_t label_dsc;
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT);
+    char profile[2] = {(char)('1' + MIN(state->active_profile_index,
+                                         (uint8_t)(NICE_VIEW_HID_PROFILE_COUNT - 1))),
+                       '\0'};
+    canvas_draw_text(canvas, 36, 4, 14, &label_dsc, profile);
 }
 
 static void draw_language_icon(lv_obj_t *canvas, lv_coord_t cx, lv_coord_t cy) {

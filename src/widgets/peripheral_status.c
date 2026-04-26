@@ -14,13 +14,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/battery.h>
 #include <zmk/display.h>
+#include <zmk/events/battery_state_changed.h>
+#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/event_manager.h>
-#include <zmk/events/battery_state_changed.h>
 #include <zmk/split/bluetooth/peripheral.h>
-#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/usb.h>
-#include <zmk/ble.h>
 
 #include "peripheral_status.h"
 
@@ -30,82 +29,86 @@ struct peripheral_status_state {
     bool connected;
 };
 
-static void draw_top(struct zmk_widget_status *widget) {
-    lv_obj_t *canvas = widget->top_canvas;
-
-    lv_draw_label_dsc_t label_dsc;
-    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_RIGHT);
-    lv_draw_rect_dsc_t rect_black_dsc;
-    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-
-    // Fill background
-    canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
-
-    // Draw battery
-    draw_battery(canvas, &widget->state);
-
-    // Draw output status
-    canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
-                     widget->state.connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
-
-    // Rotate canvas
-    rotate_canvas(canvas);
+static void fill_canvas(lv_obj_t *canvas) {
+    lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
-static bool media_scroll_allowed(struct zmk_widget_status *widget) {
-#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
-    return widget->state.is_connected &&
-           (widget->state.charging ||
-            widget->state.battery >= CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_MIN_BATTERY);
-#else
-    ARG_UNUSED(widget);
-    return false;
-#endif
+static void draw_play_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+
+    static const uint8_t row_widths[] = {7, 5, 5, 3, 3, 1};
+    static const uint8_t row_offsets[] = {0, 1, 1, 2, 2, 3};
+
+    for (uint8_t i = 0; i < ARRAY_SIZE(row_widths); i++) {
+        canvas_draw_rect(canvas, x + row_offsets[i], y + i, row_widths[i], 1, &rect_dsc);
+    }
 }
 
-static void apply_media_label_mode(struct zmk_widget_status *widget) {
-    lv_label_long_mode_t mode =
-        media_scroll_allowed(widget) ? LV_LABEL_LONG_MODE_SCROLL_CIRCULAR : LV_LABEL_LONG_MODE_CLIP;
+static void draw_header(lv_obj_t *canvas, const struct status_state *state) {
+    draw_battery(canvas, state);
 
-    lv_label_set_long_mode(widget->title_label, mode);
-    lv_label_set_long_mode(widget->artist_label, mode);
-#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
-    lv_obj_set_style_anim_duration(widget->title_label,
-                                   CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS, 0);
-    lv_obj_set_style_anim_duration(widget->artist_label,
-                                   CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS, 0);
-#endif
+    if (state->connected) {
+        draw_elemental_bluetooth_logo(canvas, 52, 3);
+    } else {
+        draw_elemental_bluetooth_logo_outlined(canvas, 52, 3);
+    }
 }
 
-static void update_now_playing_text(struct zmk_widget_status *widget) {
+static const char *media_title_text(const struct status_state *state) {
 #if IS_ENABLED(CONFIG_RAW_HID)
-    if (widget->title_label == NULL || widget->artist_label == NULL) {
-        return;
+    if (!state->connected) {
+        return "Waiting link";
     }
 
-    apply_media_label_mode(widget);
-
-    if (!widget->state.connected) {
-        lv_label_set_text(widget->title_label, "Waiting link");
-        lv_label_set_text(widget->artist_label, "Split offline");
-        return;
+    if (!state->is_connected) {
+        return "Connect RAW HID";
     }
 
-    if (!widget->state.is_connected) {
-        lv_label_set_text(widget->title_label, "Waiting host");
-        lv_label_set_text(widget->artist_label, "");
-        return;
-    }
-
-    const bool has_title = strlen(widget->state.media_title) > 0;
-    const bool has_artist = strlen(widget->state.media_artist) > 0;
-
-    lv_label_set_text(widget->title_label,
-                      has_title ? widget->state.media_title : "Now playing");
-    lv_label_set_text(widget->artist_label, has_artist ? widget->state.media_artist : " ");
+    return strlen(state->media_title) > 0 ? state->media_title : "Now playing";
 #else
-    ARG_UNUSED(widget);
+    ARG_UNUSED(state);
+    return "Peripheral";
 #endif
+}
+
+static const char *media_artist_text(const struct status_state *state) {
+#if IS_ENABLED(CONFIG_RAW_HID)
+    if (!state->connected) {
+        return "Split offline";
+    }
+
+    if (!state->is_connected) {
+        return "Waiting host";
+    }
+
+    return strlen(state->media_artist) > 0 ? state->media_artist : " ";
+#else
+    return state->connected ? "Connected" : "Disconnected";
+#endif
+}
+
+static void draw_media(lv_obj_t *canvas, const struct status_state *state) {
+    lv_draw_label_dsc_t title_dsc;
+    init_label_dsc(&title_dsc, LVGL_FOREGROUND, &lv_font_montserrat_20, LV_TEXT_ALIGN_LEFT);
+    lv_draw_label_dsc_t artist_dsc;
+    init_label_dsc(&artist_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
+    lv_draw_label_dsc_t status_dsc;
+    init_label_dsc(&status_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
+
+    draw_play_icon(canvas, 55, 30);
+    canvas_draw_text(canvas, 55, 39, 13, &status_dsc, state->connected ? "Playing" : "Offline");
+    canvas_draw_text(canvas, 4, 29, 14, &artist_dsc, media_artist_text(state));
+    canvas_draw_text(canvas, 21, 29, 32, &title_dsc, media_title_text(state));
+}
+
+static void redraw_widget(struct zmk_widget_status *widget) {
+    fill_canvas(widget->portrait_canvas);
+    draw_header(widget->portrait_canvas, &widget->state);
+    draw_media(widget->portrait_canvas, &widget->state);
+
+    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
+    lv_obj_invalidate(widget->screen_canvas);
 }
 
 static void copy_text_field(char *dst, const char *src) {
@@ -122,12 +125,10 @@ static void set_battery_status(struct zmk_widget_status *widget,
                                struct battery_status_state state) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     widget->state.charging = state.usb_present;
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
 
     widget->state.battery = state.level;
-
-    draw_top(widget);
-    update_now_playing_text(widget);
+    redraw_widget(widget);
 }
 
 static void battery_status_update_cb(struct battery_status_state state) {
@@ -136,11 +137,13 @@ static void battery_status_update_cb(struct battery_status_state state) {
 }
 
 static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
+    const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
+
     return (struct battery_status_state){
-        .level = zmk_battery_state_of_charge(),
+        .level = (ev != NULL) ? ev->state_of_charge : zmk_battery_state_of_charge(),
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
         .usb_present = zmk_usb_is_powered(),
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
     };
 }
 
@@ -150,7 +153,7 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_battery_state_changed);
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_usb_conn_state_changed);
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
 
 static struct peripheral_status_state get_state(const zmk_event_t *_eh) {
     return (struct peripheral_status_state){.connected = zmk_split_bt_peripheral_is_connected()};
@@ -159,9 +162,7 @@ static struct peripheral_status_state get_state(const zmk_event_t *_eh) {
 static void set_connection_status(struct zmk_widget_status *widget,
                                   struct peripheral_status_state state) {
     widget->state.connected = state.connected;
-
-    draw_top(widget);
-    update_now_playing_text(widget);
+    redraw_widget(widget);
 }
 
 static void output_status_update_cb(struct peripheral_status_state state) {
@@ -192,7 +193,7 @@ static void is_hid_connected_update_cb(struct is_connected_notification is_conne
             widget->state.media_title[0] = '\0';
         }
 
-        update_now_playing_text(widget);
+        redraw_widget(widget);
     }
 }
 
@@ -212,7 +213,7 @@ static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
-        update_now_playing_text(widget);
+        redraw_widget(widget);
     }
 }
 
@@ -232,7 +233,7 @@ static void media_artist_update_cb(struct media_artist_notification artist) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_artist, artist.value);
-        update_now_playing_text(widget);
+        redraw_widget(widget);
     }
 }
 
@@ -244,29 +245,23 @@ ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 160, 68);
+    lv_obj_set_size(widget->obj, NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT);
     lv_obj_set_style_bg_color(widget->obj, LVGL_BACKGROUND, 0);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(widget->obj, 0, 0);
+    lv_obj_set_style_pad_all(widget->obj, 0, 0);
     memset(&widget->state, 0, sizeof(widget->state));
 
-    widget->top_canvas = lv_canvas_create(widget->obj);
-    lv_obj_align(widget->top_canvas, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_canvas_set_buffer(widget->top_canvas, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE,
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    lv_obj_set_pos(widget->portrait_canvas, -NICE_VIEW_HID_PORTRAIT_WIDTH - 1, 0);
+    lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
+                         NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
                          CANVAS_COLOR_FORMAT);
 
-    widget->title_label = lv_label_create(widget->obj);
-    lv_obj_align(widget->title_label, LV_ALIGN_TOP_LEFT, 6, 4);
-    lv_obj_set_width(widget->title_label, 140);
-    lv_label_set_long_mode(widget->title_label, LV_LABEL_LONG_MODE_CLIP);
-    lv_obj_set_style_text_font(widget->title_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(widget->title_label, LVGL_FOREGROUND, 0);
-
-    widget->artist_label = lv_label_create(widget->obj);
-    lv_obj_align(widget->artist_label, LV_ALIGN_TOP_LEFT, 6, 36);
-    lv_obj_set_width(widget->artist_label, 140);
-    lv_label_set_long_mode(widget->artist_label, LV_LABEL_LONG_MODE_CLIP);
-    lv_obj_set_style_text_font(widget->artist_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(widget->artist_label, LVGL_FOREGROUND, 0);
+    widget->screen_canvas = lv_canvas_create(widget->obj);
+    lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_canvas_set_buffer(widget->screen_canvas, widget->screen_cbuf, NICE_VIEW_HID_SCREEN_WIDTH,
+                         NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
@@ -275,9 +270,9 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_is_connected_init();
     widget_media_title_init();
     widget_media_artist_init();
-    update_now_playing_text(widget);
 #endif
-    draw_top(widget);
+
+    redraw_widget(widget);
 
     return 0;
 }

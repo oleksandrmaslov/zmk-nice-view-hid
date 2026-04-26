@@ -11,11 +11,22 @@
 
 #define NICE_VIEW_HID_PROFILE_COUNT 5
 
+#define NICE_VIEW_HID_SCREEN_WIDTH 160
+#define NICE_VIEW_HID_SCREEN_HEIGHT 68
+#define NICE_VIEW_HID_PORTRAIT_WIDTH 68
+#define NICE_VIEW_HID_PORTRAIT_HEIGHT 160
+
 #define CANVAS_SIZE 68
 #define CANVAS_COLOR_FORMAT LV_COLOR_FORMAT_L8
 #define CANVAS_BUF_SIZE                                                                            \
     LV_CANVAS_BUF_SIZE(CANVAS_SIZE, CANVAS_SIZE, LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT),     \
                        LV_DRAW_BUF_STRIDE_ALIGN)
+#define SCREEN_CANVAS_BUF_SIZE                                                                     \
+    LV_CANVAS_BUF_SIZE(NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT,                    \
+                       LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), LV_DRAW_BUF_STRIDE_ALIGN)
+#define PORTRAIT_CANVAS_BUF_SIZE                                                                   \
+    LV_CANVAS_BUF_SIZE(NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,                \
+                       LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), LV_DRAW_BUF_STRIDE_ALIGN)
 
 #define LVGL_BACKGROUND                                                                            \
     IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_black() : lv_color_white()
@@ -56,7 +67,12 @@ struct battery_status_state {
 };
 
 void rotate_canvas(lv_obj_t *canvas);
+void rotate_portrait_canvas(uint8_t *source_buf, uint8_t *dest_buf);
 void draw_battery(lv_obj_t *canvas, const struct status_state *state);
+void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_elemental_bluetooth_logo_outlined(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_elemental_bluetooth_searching(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_elemental_usb_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void init_label_dsc(lv_draw_label_dsc_t *label_dsc, lv_color_t color, const lv_font_t *font,
                     lv_text_align_t align);
 void init_rect_dsc(lv_draw_rect_dsc_t *rect_dsc, lv_color_t bg_color);

@@ -9,7 +9,90 @@
 #include <string.h>
 #include "util.h"
 
-LV_IMG_DECLARE(bolt);
+/*
+ * Battery and connectivity glyphs are adapted from kevinpastor/nice-view-elemental,
+ * MIT licensed.
+ */
+
+#if CONFIG_NICE_VIEW_HID_INVERTED
+#define ELEMENTAL_BG_COLOR_BYTES 0x00, 0x00, 0x00, 0xff
+#define ELEMENTAL_FG_COLOR_BYTES 0xff, 0xff, 0xff, 0xff
+#else
+#define ELEMENTAL_BG_COLOR_BYTES 0xff, 0xff, 0xff, 0xff
+#define ELEMENTAL_FG_COLOR_BYTES 0x00, 0x00, 0x00, 0xff
+#endif
+
+static const uint8_t bluetooth_logo_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES,
+    ELEMENTAL_FG_COLOR_BYTES,
+    0x0f, 0x00, 0x3f, 0xc0, 0x7f, 0xe0, 0x7b, 0xe0, 0xf9, 0xf0, 0xfa, 0xf0,
+    0xeb, 0x70, 0xf2, 0xf0, 0xf9, 0xf0, 0xf2, 0xf0, 0xeb, 0x70, 0xfa, 0xf0,
+    0xf9, 0xf0, 0x7b, 0xe0, 0x7f, 0xe0, 0x3f, 0xc0, 0x0f, 0x00,
+};
+
+static const uint8_t bluetooth_logo_outlined_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES,
+    ELEMENTAL_FG_COLOR_BYTES,
+    0x0f, 0x00, 0x30, 0xc0, 0x40, 0x20, 0x44, 0x20, 0x86, 0x10, 0x85, 0x10,
+    0x94, 0x90, 0x8d, 0x10, 0x86, 0x10, 0x8d, 0x10, 0x94, 0x90, 0x85, 0x10,
+    0x86, 0x10, 0x44, 0x20, 0x40, 0x20, 0x30, 0xc0, 0x0f, 0x00,
+};
+
+static const uint8_t bluetooth_searching_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES,
+    ELEMENTAL_FG_COLOR_BYTES,
+    0x0f, 0x00, 0x30, 0xc0, 0x40, 0x20, 0x40, 0x20, 0x82, 0x10, 0x81, 0x10,
+    0x89, 0x10, 0x84, 0x90, 0x94, 0x90, 0x84, 0x90, 0x89, 0x10, 0x81, 0x10,
+    0x82, 0x10, 0x40, 0x20, 0x40, 0x20, 0x30, 0xc0, 0x0f, 0x00,
+};
+
+static const uint8_t usb_logo_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES,
+    ELEMENTAL_FG_COLOR_BYTES,
+    0x00, 0x10, 0x00, 0x00, 0xf8, 0x00, 0x01, 0x10, 0x00,
+    0xe2, 0x00, 0x80, 0xff, 0xff, 0xc0, 0xe0, 0x80, 0x80,
+    0x00, 0x40, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x0c, 0x00,
+};
+
+static const lv_image_dsc_t bluetooth_logo = {
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.cf = LV_COLOR_FORMAT_I1,
+    .header.w = 12,
+    .header.h = 17,
+    .header.stride = 2,
+    .data_size = sizeof(bluetooth_logo_map),
+    .data = bluetooth_logo_map,
+};
+
+static const lv_image_dsc_t bluetooth_logo_outlined = {
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.cf = LV_COLOR_FORMAT_I1,
+    .header.w = 12,
+    .header.h = 17,
+    .header.stride = 2,
+    .data_size = sizeof(bluetooth_logo_outlined_map),
+    .data = bluetooth_logo_outlined_map,
+};
+
+static const lv_image_dsc_t bluetooth_searching = {
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.cf = LV_COLOR_FORMAT_I1,
+    .header.w = 12,
+    .header.h = 17,
+    .header.stride = 2,
+    .data_size = sizeof(bluetooth_searching_map),
+    .data = bluetooth_searching_map,
+};
+
+static const lv_image_dsc_t usb_logo = {
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.cf = LV_COLOR_FORMAT_I1,
+    .header.w = 18,
+    .header.h = 9,
+    .header.stride = 3,
+    .data_size = sizeof(usb_logo_map),
+    .data = usb_logo_map,
+};
 
 void rotate_canvas(lv_obj_t *canvas) {
     uint8_t *buf = lv_canvas_get_draw_buf(canvas)->data;
@@ -21,23 +104,119 @@ void rotate_canvas(lv_obj_t *canvas) {
                       LV_DISPLAY_ROTATION_270, CANVAS_COLOR_FORMAT);
 }
 
-void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    lv_draw_rect_dsc_t rect_black_dsc;
-    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-    lv_draw_rect_dsc_t rect_white_dsc;
-    init_rect_dsc(&rect_white_dsc, LVGL_FOREGROUND);
+void rotate_portrait_canvas(uint8_t *source_buf, uint8_t *dest_buf) {
+    const uint32_t source_stride =
+        lv_draw_buf_width_to_stride(NICE_VIEW_HID_PORTRAIT_WIDTH, CANVAS_COLOR_FORMAT);
+    const uint32_t dest_stride =
+        lv_draw_buf_width_to_stride(NICE_VIEW_HID_SCREEN_WIDTH, CANVAS_COLOR_FORMAT);
 
-    canvas_draw_rect(canvas, 0, 2, 29, 12, &rect_white_dsc);
-    canvas_draw_rect(canvas, 1, 3, 27, 10, &rect_black_dsc);
-    canvas_draw_rect(canvas, 2, 4, (state->battery + 2) / 4, 8, &rect_white_dsc);
-    canvas_draw_rect(canvas, 30, 5, 3, 6, &rect_white_dsc);
-    canvas_draw_rect(canvas, 31, 6, 1, 4, &rect_black_dsc);
+    lv_draw_sw_rotate(source_buf, dest_buf, NICE_VIEW_HID_PORTRAIT_WIDTH,
+                      NICE_VIEW_HID_PORTRAIT_HEIGHT, source_stride, dest_stride,
+                      LV_DISPLAY_ROTATION_270, CANVAS_COLOR_FORMAT);
+}
 
-    if (state->charging) {
-        lv_draw_image_dsc_t img_dsc;
-        lv_draw_image_dsc_init(&img_dsc);
-        canvas_draw_img(canvas, 9, -1, &bolt, &img_dsc);
+static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color_t color) {
+    lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
+}
+
+static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+
+    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
+    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
+
+    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
+
+    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
+}
+
+static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 8, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 7, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 7, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 7, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 6, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 6, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 6, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 6, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 5, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 5, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 4, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 4, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 4, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 4, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 3, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 3, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 3, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 2, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
+}
+
+static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                                      uint8_t level, bool charging) {
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+
+    draw_battery_outline(canvas, x, y);
+
+    uint8_t clamped_level = level > 100 ? 100 : level;
+    const uint8_t height = (19 * clamped_level) / 100;
+    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
+
+    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
+
+    if (charging) {
+        draw_battery_lightning_bolt(canvas, x, y);
     }
+}
+
+void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
+    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
+}
+
+void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
+    canvas_draw_img(canvas, x, y, &bluetooth_logo, &img_dsc);
+}
+
+void draw_elemental_bluetooth_logo_outlined(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
+    canvas_draw_img(canvas, x, y, &bluetooth_logo_outlined, &img_dsc);
+}
+
+void draw_elemental_bluetooth_searching(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
+    canvas_draw_img(canvas, x, y, &bluetooth_searching, &img_dsc);
+}
+
+void draw_elemental_usb_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
+    canvas_draw_img(canvas, x, y, &usb_logo, &img_dsc);
 }
 
 void init_label_dsc(lv_draw_label_dsc_t *label_dsc, lv_color_t color, const lv_font_t *font,
@@ -114,7 +293,7 @@ void canvas_draw_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t m
     lv_canvas_init_layer(canvas, &layer);
 
     draw_dsc->text = txt;
-    lv_area_t coords = {x, y, x + max_w - 1, y + CANVAS_SIZE - 1};
+    lv_area_t coords = {x, y, x + max_w - 1, y + lv_obj_get_height(canvas) - 1};
     lv_draw_label(&layer, draw_dsc, &coords);
 
     lv_canvas_finish_layer(canvas, &layer);
