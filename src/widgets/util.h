@@ -41,7 +41,6 @@ struct status_state {
     uint8_t active_profile_index;
     bool active_profile_connected;
     bool active_profile_bonded;
-    bool profile_connected[NICE_VIEW_HID_PROFILE_COUNT];
     bool profile_bonded[NICE_VIEW_HID_PROFILE_COUNT];
     uint8_t layer_index;
     const char *layer_label;
@@ -69,6 +68,8 @@ struct battery_status_state {
 void rotate_canvas(lv_obj_t *canvas);
 void rotate_portrait_canvas(uint8_t *source_buf, uint8_t *dest_buf);
 void draw_battery(lv_obj_t *canvas, const struct status_state *state);
+void draw_battery_right(lv_obj_t *canvas, const struct status_state *state, lv_coord_t x,
+                        lv_coord_t y);
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_bluetooth_logo_outlined(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_bluetooth_searching(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
