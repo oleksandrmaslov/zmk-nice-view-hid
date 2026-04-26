@@ -39,17 +39,42 @@ static void draw_top(struct zmk_widget_status *widget) {
     init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
 
     // Fill background
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
 
     // Draw battery
     draw_battery(canvas, &widget->state);
 
     // Draw output status
-    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
-                        widget->state.connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
+    canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
+                     widget->state.connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
 
     // Rotate canvas
-    rotate_canvas(canvas, widget->cbuf);
+    rotate_canvas(canvas);
+}
+
+static bool media_scroll_allowed(struct zmk_widget_status *widget) {
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    return widget->state.is_connected &&
+           (widget->state.charging ||
+            widget->state.battery >= CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_MIN_BATTERY);
+#else
+    ARG_UNUSED(widget);
+    return false;
+#endif
+}
+
+static void apply_media_label_mode(struct zmk_widget_status *widget) {
+    lv_label_long_mode_t mode =
+        media_scroll_allowed(widget) ? LV_LABEL_LONG_MODE_SCROLL_CIRCULAR : LV_LABEL_LONG_MODE_CLIP;
+
+    lv_label_set_long_mode(widget->title_label, mode);
+    lv_label_set_long_mode(widget->artist_label, mode);
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    lv_obj_set_style_anim_duration(widget->title_label,
+                                   CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS, 0);
+    lv_obj_set_style_anim_duration(widget->artist_label,
+                                   CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS, 0);
+#endif
 }
 
 static void update_now_playing_text(struct zmk_widget_status *widget) {
@@ -57,6 +82,8 @@ static void update_now_playing_text(struct zmk_widget_status *widget) {
     if (widget->title_label == NULL || widget->artist_label == NULL) {
         return;
     }
+
+    apply_media_label_mode(widget);
 
     if (!widget->state.connected) {
         lv_label_set_text(widget->title_label, "Waiting link");
@@ -100,6 +127,7 @@ static void set_battery_status(struct zmk_widget_status *widget,
     widget->state.battery = state.level;
 
     draw_top(widget);
+    update_now_playing_text(widget);
 }
 
 static void battery_status_update_cb(struct battery_status_state state) {
@@ -217,24 +245,26 @@ ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     lv_obj_set_size(widget->obj, 160, 68);
+    lv_obj_set_style_bg_color(widget->obj, LVGL_BACKGROUND, 0);
+    lv_obj_set_style_bg_opa(widget->obj, LV_OPA_COVER, 0);
     memset(&widget->state, 0, sizeof(widget->state));
 
     widget->top_canvas = lv_canvas_create(widget->obj);
     lv_obj_align(widget->top_canvas, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(widget->top_canvas, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE,
-                         LV_IMG_CF_TRUE_COLOR);
+                         CANVAS_COLOR_FORMAT);
 
     widget->title_label = lv_label_create(widget->obj);
     lv_obj_align(widget->title_label, LV_ALIGN_TOP_LEFT, 6, 4);
     lv_obj_set_width(widget->title_label, 140);
-    lv_label_set_long_mode(widget->title_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_long_mode(widget->title_label, LV_LABEL_LONG_MODE_CLIP);
     lv_obj_set_style_text_font(widget->title_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(widget->title_label, LVGL_FOREGROUND, 0);
 
     widget->artist_label = lv_label_create(widget->obj);
     lv_obj_align(widget->artist_label, LV_ALIGN_TOP_LEFT, 6, 36);
     lv_obj_set_width(widget->artist_label, 140);
-    lv_label_set_long_mode(widget->artist_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_long_mode(widget->artist_label, LV_LABEL_LONG_MODE_CLIP);
     lv_obj_set_style_text_font(widget->artist_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(widget->artist_label, LVGL_FOREGROUND, 0);
 
@@ -247,6 +277,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_media_artist_init();
     update_now_playing_text(widget);
 #endif
+    draw_top(widget);
 
     return 0;
 }
