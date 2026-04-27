@@ -119,6 +119,23 @@ static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color
     lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
 }
 
+static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+
+    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
+    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
+
+    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
+
+    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
+}
+
 static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
     canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
@@ -153,79 +170,29 @@ static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord
     canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
 }
 
-static void draw_battery_rotated_right_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
-                                          uint8_t level, bool charging) {
+static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                                      uint8_t level, bool charging) {
     lv_draw_rect_dsc_t rect_dsc;
     init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
 
-    canvas_draw_rect(canvas, x + 10, y + 5, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y + 25, 7, 1, &rect_dsc);
-    canvas_draw_rect(canvas, x, y + 5, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y + 3, 7, 1, &rect_dsc);
-
-    canvas_set_px(canvas, x + 9, y + 4, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 9, y + 24, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 24, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 4, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x + 4, y, 3, 3, &rect_dsc);
+    draw_battery_outline(canvas, x, y);
 
     uint8_t clamped_level = level > 100 ? 100 : level;
     const uint8_t height = (19 * clamped_level) / 100;
-    if (height > 0) {
-        canvas_draw_rect(canvas, x + 2, y + 24 - height, 7, height, &rect_dsc);
-    }
+    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
 
-    canvas_set_px(canvas, x + 8, y + 5, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 23, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 23, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 5, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
 
     if (charging) {
-        draw_battery_lightning_bolt(canvas, x, y + 3);
+        draw_battery_lightning_bolt(canvas, x, y);
     }
 }
 
 void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    draw_battery_rotated_right_at(canvas, 4, 2, state->battery, state->charging);
-}
-
-void draw_battery_right(lv_obj_t *canvas, const struct status_state *state, lv_coord_t x,
-                        lv_coord_t y) {
-    lv_draw_rect_dsc_t fg_dsc;
-    init_rect_dsc(&fg_dsc, LVGL_FOREGROUND);
-    lv_draw_rect_dsc_t bg_dsc;
-    init_rect_dsc(&bg_dsc, LVGL_BACKGROUND);
-
-    canvas_draw_rect(canvas, x, y, 23, 11, &fg_dsc);
-    canvas_draw_rect(canvas, x + 1, y + 1, 21, 9, &bg_dsc);
-    canvas_draw_rect(canvas, x + 23, y + 4, 3, 3, &fg_dsc);
-
-    canvas_set_px(canvas, x, y, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 22, y, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 22, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 21, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 9, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 21, y + 9, LVGL_FOREGROUND);
-
-    uint8_t clamped_level = state->battery > 100 ? 100 : state->battery;
-    const uint8_t fill_width = (19 * clamped_level) / 100;
-    if (fill_width > 0) {
-        canvas_draw_rect(canvas, x + 2, y + 2, fill_width, 7, &fg_dsc);
-    }
-
-    if (state->charging) {
-        canvas_set_px(canvas, x + 14, y + 2, LVGL_BACKGROUND);
-        canvas_set_px(canvas, x + 13, y + 3, LVGL_BACKGROUND);
-        canvas_set_px(canvas, x + 12, y + 4, LVGL_FOREGROUND);
-        canvas_set_px(canvas, x + 13, y + 4, LVGL_FOREGROUND);
-        canvas_set_px(canvas, x + 12, y + 5, LVGL_FOREGROUND);
-        canvas_set_px(canvas, x + 11, y + 6, LVGL_FOREGROUND);
-        canvas_set_px(canvas, x + 12, y + 6, LVGL_BACKGROUND);
-        canvas_set_px(canvas, x + 11, y + 7, LVGL_BACKGROUND);
-    }
+    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
 }
 
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
@@ -330,6 +297,15 @@ void canvas_draw_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t m
     lv_draw_label(&layer, draw_dsc, &coords);
 
     lv_canvas_finish_layer(canvas, &layer);
+}
+
+void canvas_draw_rotated_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t max_w,
+                              int32_t rotation, lv_draw_label_dsc_t *draw_dsc, const char *txt) {
+    int32_t previous_rotation = draw_dsc->rotation;
+
+    draw_dsc->rotation = rotation;
+    canvas_draw_text(canvas, x, y, max_w, draw_dsc, txt);
+    draw_dsc->rotation = previous_rotation;
 }
 
 void canvas_draw_img(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, const lv_image_dsc_t *src,

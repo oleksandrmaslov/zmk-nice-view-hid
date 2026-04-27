@@ -37,21 +37,21 @@ static void draw_play_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     lv_draw_rect_dsc_t rect_dsc;
     init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
 
-    static const uint8_t heights[] = {1, 3, 5, 7, 5, 3, 1};
-    static const uint8_t offsets[] = {3, 2, 1, 0, 1, 2, 3};
+    static const uint8_t row_widths[] = {7, 5, 5, 3, 3, 1};
+    static const uint8_t row_offsets[] = {0, 1, 1, 2, 2, 3};
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(heights); i++) {
-        canvas_draw_rect(canvas, x + i, y + offsets[i], 1, heights[i], &rect_dsc);
+    for (uint8_t i = 0; i < ARRAY_SIZE(row_widths); i++) {
+        canvas_draw_rect(canvas, x + row_offsets[i], y + i, row_widths[i], 1, &rect_dsc);
     }
 }
 
 static void draw_header(lv_obj_t *canvas, const struct status_state *state) {
-    draw_battery_right(canvas, state, 4, 6);
+    draw_battery(canvas, state);
 
     if (state->connected) {
-        draw_elemental_bluetooth_logo(canvas, 144, 3);
+        draw_elemental_bluetooth_logo(canvas, 52, 3);
     } else {
-        draw_elemental_bluetooth_logo_outlined(canvas, 144, 3);
+        draw_elemental_bluetooth_logo_outlined(canvas, 52, 3);
     }
 }
 
@@ -96,16 +96,19 @@ static void draw_media(lv_obj_t *canvas, const struct status_state *state) {
     lv_draw_label_dsc_t status_dsc;
     init_label_dsc(&status_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
 
-    draw_play_icon(canvas, 136, 30);
-    canvas_draw_text(canvas, 124, 42, 34, &status_dsc, state->connected ? "Playing" : "Offline");
-    canvas_draw_text(canvas, 4, 45, 116, &artist_dsc, media_artist_text(state));
-    canvas_draw_text(canvas, 20, 22, 112, &title_dsc, media_title_text(state));
+    draw_play_icon(canvas, 55, 30);
+    canvas_draw_rotated_text(canvas, 55, 39, 13, 900, &status_dsc,
+                             state->connected ? "Playing" : "Offline");
+    canvas_draw_rotated_text(canvas, 4, 29, 14, 900, &artist_dsc, media_artist_text(state));
+    canvas_draw_rotated_text(canvas, 21, 29, 32, 900, &title_dsc, media_title_text(state));
 }
 
 static void redraw_widget(struct zmk_widget_status *widget) {
-    fill_canvas(widget->screen_canvas);
-    draw_header(widget->screen_canvas, &widget->state);
-    draw_media(widget->screen_canvas, &widget->state);
+    fill_canvas(widget->portrait_canvas);
+    draw_header(widget->portrait_canvas, &widget->state);
+    draw_media(widget->portrait_canvas, &widget->state);
+
+    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
     lv_obj_invalidate(widget->screen_canvas);
 }
 
@@ -249,6 +252,12 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_set_style_border_width(widget->obj, 0, 0);
     lv_obj_set_style_pad_all(widget->obj, 0, 0);
     memset(&widget->state, 0, sizeof(widget->state));
+
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    lv_obj_set_pos(widget->portrait_canvas, -NICE_VIEW_HID_PORTRAIT_WIDTH - 1, 0);
+    lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
+                         NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
+                         CANVAS_COLOR_FORMAT);
 
     widget->screen_canvas = lv_canvas_create(widget->obj);
     lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
