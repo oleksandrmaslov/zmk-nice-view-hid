@@ -14,10 +14,10 @@
 struct zmk_widget_status {
     sys_snode_t node;
     lv_obj_t *obj;
-    uint8_t cbuf[CANVAS_BUF_SIZE];
-    uint8_t cbuf_hid[CANVAS_BUF_SIZE];
-    uint8_t cbuf2[CANVAS_BUF_SIZE];
-    uint8_t cbuf3[CANVAS_BUF_SIZE];
+    lv_obj_t *screen_canvas;
+    lv_obj_t *portrait_canvas;
+    uint8_t screen_cbuf[SCREEN_CANVAS_BUF_SIZE];
+    uint8_t portrait_cbuf[PORTRAIT_CANVAS_BUF_SIZE];
     struct status_state state;
 };
 

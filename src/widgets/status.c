@@ -32,12 +32,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <nice_view_hid/hid.h>
 #endif
 
-enum widget_children {
-    WIDGET_TOP = 0,
-    WIDGET_HID,
-    WIDGET_MIDDLE,
-    WIDGET_BOTTOM,
-};
+/*
+ * Layout coordinates are in the 68 × 160 portrait design space.
+ * They map 1:1 to references/Connected.svg / references/No RAWHID.svg, and
+ * the final 160 × 68 image is produced by rotate_portrait_canvas().
+ */
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -59,87 +58,72 @@ static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
-static void draw_line(lv_obj_t *canvas, lv_coord_t x1, lv_coord_t y1, lv_coord_t x2, lv_coord_t y2,
-                      uint8_t width) {
-    lv_draw_line_dsc_t line_dsc;
-    init_line_dsc(&line_dsc, LVGL_FOREGROUND, width);
-    const lv_point_t points[] = {{x1, y1}, {x2, y2}};
-    canvas_draw_line(canvas, points, ARRAY_SIZE(points), &line_dsc);
+static void fg_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t dsc;
+    init_rect_dsc(&dsc, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas, x, y, 1, 1, &dsc);
 }
 
-static void draw_background_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_BACKGROUND);
-    canvas_draw_rect(canvas, x, y, 1, 1, &rect_dsc);
+static void bg_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t dsc;
+    init_rect_dsc(&dsc, LVGL_BACKGROUND);
+    canvas_draw_rect(canvas, x, y, 1, 1, &dsc);
 }
 
-static void draw_foreground_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-    canvas_draw_rect(canvas, x, y, 1, 1, &rect_dsc);
+/* ---------- Profile dots (10×10), pixel-perfect from Connected.svg ---------- */
+
+static void draw_profile_selected(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas, x, y, 10, 10, &fg);
+    bg_pixel(canvas, x, y);
+    bg_pixel(canvas, x + 9, y);
+    bg_pixel(canvas, x, y + 9);
+    bg_pixel(canvas, x + 9, y + 9);
 }
 
-static void draw_open_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+static void draw_profile_bonded(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    /* outlined 9×9 stroke + 4 inner-corner accents; matches #Bounded profile */
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas, x, y, 10, 1, &fg);
+    canvas_draw_rect(canvas, x, y + 9, 10, 1, &fg);
+    canvas_draw_rect(canvas, x, y, 1, 10, &fg);
+    canvas_draw_rect(canvas, x + 9, y, 1, 10, &fg);
+    fg_pixel(canvas, x + 1, y + 1);
+    fg_pixel(canvas, x + 8, y + 1);
+    fg_pixel(canvas, x + 1, y + 8);
+    fg_pixel(canvas, x + 8, y + 8);
+}
+
+static void draw_profile_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    /* dotted outline — every other px on each side; matches #Free profile spirit */
     for (uint8_t i = 0; i < 10; i += 2) {
-        draw_foreground_pixel(canvas, x + i, y);
-        draw_foreground_pixel(canvas, x + i, y + 9);
-        draw_foreground_pixel(canvas, x, y + i);
-        draw_foreground_pixel(canvas, x + 9, y + i);
+        fg_pixel(canvas, x + i, y);
+        fg_pixel(canvas, x + i, y + 9);
+        fg_pixel(canvas, x, y + i);
+        fg_pixel(canvas, x + 9, y + i);
     }
 }
 
-static void draw_bonded_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t fg_dsc;
-    init_rect_dsc(&fg_dsc, LVGL_FOREGROUND);
-    lv_draw_rect_dsc_t bg_dsc;
-    init_rect_dsc(&bg_dsc, LVGL_BACKGROUND);
-
-    canvas_draw_rect(canvas, x, y, 10, 10, &fg_dsc);
-    canvas_draw_rect(canvas, x + 1, y + 1, 8, 8, &bg_dsc);
-    draw_background_pixel(canvas, x, y);
-    draw_background_pixel(canvas, x + 9, y);
-    draw_background_pixel(canvas, x, y + 9);
-    draw_background_pixel(canvas, x + 9, y + 9);
-    draw_foreground_pixel(canvas, x + 1, y + 1);
-    draw_foreground_pixel(canvas, x + 8, y + 1);
-    draw_foreground_pixel(canvas, x + 1, y + 8);
-    draw_foreground_pixel(canvas, x + 8, y + 8);
-}
-
-static void draw_connected_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t fg_dsc;
-    init_rect_dsc(&fg_dsc, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x, y, 10, 10, &fg_dsc);
-    draw_background_pixel(canvas, x, y);
-    draw_background_pixel(canvas, x + 9, y);
-    draw_background_pixel(canvas, x, y + 9);
-    draw_background_pixel(canvas, x + 9, y + 9);
-}
-
-static void draw_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, bool connected,
-                              bool bonded) {
-    if (connected) {
-        draw_connected_profile_icon(canvas, x, y);
-    } else if (bonded) {
-        draw_bonded_profile_icon(canvas, x, y);
+static void draw_profile_dot(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t index,
+                             const struct status_state *state) {
+    bool selected = (index == state->active_profile_index) && state->active_profile_connected;
+    if (selected) {
+        draw_profile_selected(canvas, x, y);
+    } else if (state->profile_bonded[index]) {
+        draw_profile_bonded(canvas, x, y);
     } else {
-        draw_open_profile_icon(canvas, x, y);
+        draw_profile_free(canvas, x, y);
     }
 }
 
-static void draw_profile_row(lv_obj_t *canvas, const struct status_state *state, lv_coord_t y) {
-    static const lv_coord_t x_offsets[NICE_VIEW_HID_PROFILE_COUNT] = {4, 16, 28, 40, 52};
+/* ---------- BT / USB indicator ---------- */
 
-    for (uint8_t i = 0; i < NICE_VIEW_HID_PROFILE_COUNT; i++) {
-        draw_profile_icon(canvas, x_offsets[i], y, i == state->active_profile_index,
-                          state->profile_bonded[i]);
-    }
-}
-
-static void draw_output_icon(lv_obj_t *canvas, const struct status_state *state) {
+static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *state) {
     if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
-        draw_elemental_usb_logo(canvas, 45, 8);
+        /* USB icon: 18×9. Place its right edge near x=64 to align with where BT sits. */
+        draw_elemental_usb_logo(canvas, 46, 7);
         return;
     }
 
@@ -152,152 +136,174 @@ static void draw_output_icon(lv_obj_t *canvas, const struct status_state *state)
     } else {
         draw_elemental_bluetooth_searching(canvas, 52, 3);
     }
-
-    lv_draw_label_dsc_t label_dsc;
-    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT);
-    char profile[2] = {(char)('1' + MIN(state->active_profile_index,
-                                         (uint8_t)(NICE_VIEW_HID_PROFILE_COUNT - 1))),
-                       '\0'};
-    canvas_draw_text(canvas, 36, 4, 14, &label_dsc, profile);
 }
 
-static void draw_language_icon(lv_obj_t *canvas, lv_coord_t cx, lv_coord_t cy) {
-    lv_draw_arc_dsc_t arc_dsc;
-    init_arc_dsc(&arc_dsc, LVGL_FOREGROUND, 1);
-    canvas_draw_arc(canvas, cx, cy, 8, 0, 360, &arc_dsc);
+/* ---------- Globe + speaker glyphs (drawn vector, 10×10 / 11×11) ---------- */
 
-    draw_line(canvas, cx - 8, cy, cx + 8, cy, 1);
-    draw_line(canvas, cx, cy - 8, cx, cy + 8, 1);
-    draw_line(canvas, cx - 6, cy - 4, cx + 6, cy - 4, 1);
-    draw_line(canvas, cx - 6, cy + 4, cx + 6, cy + 4, 1);
+static void draw_language_globe(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    /* 11×11 globe centered at (x+5, y+5): circle outline + meridian + equator */
+    lv_draw_arc_dsc_t arc;
+    init_arc_dsc(&arc, LVGL_FOREGROUND, 1);
+    canvas_draw_arc(canvas, x + 5, y + 5, 5, 0, 360, &arc);
+
+    lv_draw_line_dsc_t line;
+    init_line_dsc(&line, LVGL_FOREGROUND, 1);
+    const lv_point_t equator[] = {{x + 1, y + 5}, {x + 9, y + 5}};
+    canvas_draw_line(canvas, equator, 2, &line);
+    const lv_point_t meridian[] = {{x + 5, y + 1}, {x + 5, y + 9}};
+    canvas_draw_line(canvas, meridian, 2, &line);
+    /* outer parallels */
+    const lv_point_t parallel_top[] = {{x + 2, y + 3}, {x + 8, y + 3}};
+    canvas_draw_line(canvas, parallel_top, 2, &line);
+    const lv_point_t parallel_bot[] = {{x + 2, y + 7}, {x + 8, y + 7}};
+    canvas_draw_line(canvas, parallel_bot, 2, &line);
 }
 
-static void draw_volume_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t volume) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+static void draw_speaker_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t volume) {
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
 
-    canvas_draw_rect(canvas, x, y + 6, 4, 6, &rect_dsc);
-    draw_line(canvas, x + 4, y + 6, x + 9, y + 2, 2);
-    draw_line(canvas, x + 9, y + 2, x + 9, y + 16, 2);
-    draw_line(canvas, x + 9, y + 16, x + 4, y + 12, 2);
+    /* speaker cone: 4×6 body at (x, y+2), then triangular flare to (x+4..x+5, y..y+9) */
+    canvas_draw_rect(canvas, x, y + 2, 3, 6, &fg);
+    fg_pixel(canvas, x + 3, y + 1);
+    fg_pixel(canvas, x + 3, y + 8);
+    fg_pixel(canvas, x + 4, y);
+    fg_pixel(canvas, x + 4, y + 9);
+    fg_pixel(canvas, x + 5, y);
+    fg_pixel(canvas, x + 5, y + 9);
 
+    /* sound waves: small if vol > 0, large if vol > 50; X if muted */
     if (volume == 0) {
-        draw_line(canvas, x + 13, y + 5, x + 19, y + 13, 1);
-        draw_line(canvas, x + 19, y + 5, x + 13, y + 13, 1);
+        lv_draw_line_dsc_t line;
+        init_line_dsc(&line, LVGL_FOREGROUND, 1);
+        const lv_point_t a[] = {{x + 7, y + 2}, {x + 11, y + 7}};
+        canvas_draw_line(canvas, a, 2, &line);
+        const lv_point_t b[] = {{x + 11, y + 2}, {x + 7, y + 7}};
+        canvas_draw_line(canvas, b, 2, &line);
     } else {
-        draw_line(canvas, x + 13, y + 7, x + 16, y + 10, 1);
-        draw_line(canvas, x + 16, y + 10, x + 13, y + 13, 1);
+        fg_pixel(canvas, x + 7, y + 3);
+        fg_pixel(canvas, x + 8, y + 4);
+        fg_pixel(canvas, x + 8, y + 5);
+        fg_pixel(canvas, x + 7, y + 6);
         if (volume > 50) {
-            draw_line(canvas, x + 16, y + 5, x + 20, y + 10, 1);
-            draw_line(canvas, x + 20, y + 10, x + 16, y + 15, 1);
+            fg_pixel(canvas, x + 9, y + 2);
+            fg_pixel(canvas, x + 10, y + 3);
+            fg_pixel(canvas, x + 11, y + 4);
+            fg_pixel(canvas, x + 11, y + 5);
+            fg_pixel(canvas, x + 10, y + 6);
+            fg_pixel(canvas, x + 9, y + 7);
         }
     }
 }
 
-static void get_layout_text(uint8_t layout_index, char *layout, size_t layout_size) {
-#if IS_ENABLED(CONFIG_NICE_VIEW_HID_SHOW_LAYOUT)
-    char layouts[sizeof(CONFIG_NICE_VIEW_HID_LAYOUTS)];
-    strncpy(layouts, CONFIG_NICE_VIEW_HID_LAYOUTS, sizeof(layouts));
-    layouts[sizeof(layouts) - 1] = '\0';
+/* ---------- Layout name (from comma-separated CONFIG_NICE_VIEW_HID_LAYOUTS) ---------- */
 
-    char *current_layout = strtok(layouts, ",");
+static void get_layout_text(uint8_t layout_index, char *out, size_t out_size) {
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_SHOW_LAYOUT)
+    char buf[sizeof(CONFIG_NICE_VIEW_HID_LAYOUTS)];
+    strncpy(buf, CONFIG_NICE_VIEW_HID_LAYOUTS, sizeof(buf));
+    buf[sizeof(buf) - 1] = '\0';
+
+    char *layout = strtok(buf, ",");
     size_t i = 0;
-    while (current_layout != NULL && i < layout_index) {
+    while (layout != NULL && i < layout_index) {
         i++;
-        current_layout = strtok(NULL, ",");
+        layout = strtok(NULL, ",");
     }
 
-    if (current_layout != NULL) {
-        snprintf(layout, layout_size, "%s", current_layout);
+    if (layout != NULL) {
+        snprintf(out, out_size, "%s", layout);
     } else {
-        snprintf(layout, layout_size, "%u", layout_index);
+        snprintf(out, out_size, "%u", layout_index);
+    }
+
+    /* upper-case for display */
+    for (size_t j = 0; out[j] != '\0' && j + 1 < out_size; j++) {
+        if (out[j] >= 'a' && out[j] <= 'z') {
+            out[j] = out[j] - 'a' + 'A';
+        }
     }
 #else
     ARG_UNUSED(layout_index);
-    layout[0] = '\0';
+    if (out_size > 0) out[0] = '\0';
 #endif
 }
 
-static void draw_top(lv_obj_t *widget, const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_TOP);
+/* ---------- Top-level draw ---------- */
+
+static void draw_status(struct zmk_widget_status *widget) {
+    lv_obj_t *canvas = widget->portrait_canvas;
+    const struct status_state *state = &widget->state;
 
     fill_canvas(canvas);
+
+    /* battery: SVG (4, 6) */
     draw_battery(canvas, state);
-    draw_output_icon(canvas, state);
-    rotate_canvas(canvas);
-}
+    /* BT/USB: SVG (52, 3) */
+    draw_output_indicator(canvas, state);
 
-static void draw_hid(lv_obj_t *widget, const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_HID);
-
-    lv_draw_label_dsc_t label_large;
-    init_label_dsc(&label_large, LVGL_FOREGROUND, &lv_font_montserrat_20, LV_TEXT_ALIGN_CENTER);
-    lv_draw_label_dsc_t label_medium;
-    init_label_dsc(&label_medium, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_CENTER);
-    lv_draw_label_dsc_t label_small;
-    init_label_dsc(&label_small, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER);
-
-    fill_canvas(canvas);
+    /* middle band — y ≈ 28..92 */
+    lv_draw_label_dsc_t label_18;
+    init_label_dsc(&label_18, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_LEFT);
+    lv_draw_label_dsc_t label_16_left;
+    init_label_dsc(&label_16_left, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT);
+    lv_draw_label_dsc_t label_16_center;
+    init_label_dsc(&label_16_center, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_CENTER);
+    lv_draw_label_dsc_t label_14_left;
+    init_label_dsc(&label_14_left, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
 
 #if IS_ENABLED(CONFIG_RAW_HID)
     if (state->is_connected) {
+        /* time @ (4, 31) Montserrat-18 */
         char time[8] = {};
         snprintf(time, sizeof(time), "%02u:%02u", state->hour, state->minute);
-        canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_large, time);
+        canvas_draw_text(canvas, 4, 31, 60, &label_18, time);
 
+        /* language: globe @ (4, 60) + layout text @ (18, 60) */
         char layout[10] = {};
         get_layout_text(state->layout, layout, sizeof(layout));
-        draw_language_icon(canvas, 13, 36);
-        canvas_draw_text(canvas, 24, 28, 38, &label_medium, layout);
+        draw_language_globe(canvas, 4, 60);
+        canvas_draw_text(canvas, 18, 60, 46, &label_14_left, layout);
 
+        /* volume: speaker @ (4, 79) + value @ (20, 78) */
         char volume[5] = {};
-        snprintf(volume, sizeof(volume), "%u", state->volume);
-        draw_volume_icon(canvas, 6, 48, state->volume);
-        canvas_draw_text(canvas, 31, 48, 30, &label_small, volume);
-    } else
+        snprintf(volume, sizeof(volume), "%u%%", state->volume);
+        draw_speaker_icon(canvas, 4, 79, state->volume);
+        canvas_draw_text(canvas, 20, 76, 44, &label_14_left, volume);
+    } else {
+        /* "Connect / RAW HID" centered prompt — replaces middle band */
+        canvas_draw_text(canvas, 0, 44, 68, &label_16_center, "Connect");
+        canvas_draw_text(canvas, 0, 64, 68, &label_16_center, "RAW HID");
+    }
+#else
+    ARG_UNUSED(label_18);
+    ARG_UNUSED(label_16_left);
+    ARG_UNUSED(label_14_left);
+    ARG_UNUSED(label_16_center);
 #endif
-    {
-        canvas_draw_text(canvas, 0, 12, CANVAS_SIZE, &label_medium, "Connect");
-        canvas_draw_text(canvas, 0, 34, CANVAS_SIZE, &label_large, "RAW");
-        canvas_draw_text(canvas, 0, 52, CANVAS_SIZE, &label_medium, "HID");
+
+    /* profile section */
+    canvas_draw_text(canvas, 4, 101, 60, &label_14_left, "Profile");
+    static const lv_coord_t profile_x[NICE_VIEW_HID_PROFILE_COUNT] = {4, 16, 28, 40, 52};
+    for (uint8_t i = 0; i < NICE_VIEW_HID_PROFILE_COUNT; i++) {
+        draw_profile_dot(canvas, profile_x[i], 113, i, state);
     }
 
-    rotate_canvas(canvas);
-}
-
-static void draw_middle(lv_obj_t *widget, const struct status_state *state) {
-    ARG_UNUSED(state);
-
-    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_MIDDLE);
-
-    fill_canvas(canvas);
-    rotate_canvas(canvas);
-}
-
-static void draw_bottom(lv_obj_t *widget, const struct status_state *state) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, WIDGET_BOTTOM);
-
-    lv_draw_label_dsc_t label_small;
-    init_label_dsc(&label_small, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
-    lv_draw_label_dsc_t label_center;
-    init_label_dsc(&label_center, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_CENTER);
-
-    fill_canvas(canvas);
-
-    canvas_draw_text(canvas, 4, 0, 60, &label_small, "Profile");
-    draw_profile_row(canvas, state, 17);
-
-    canvas_draw_text(canvas, 4, 37, 60, &label_small, "Layer");
+    /* layer section */
+    canvas_draw_text(canvas, 4, 133, 60, &label_14_left, "Layer");
     if (state->layer_label == NULL || strlen(state->layer_label) == 0) {
         char text[12] = {};
         snprintf(text, sizeof(text), "Base %u", state->layer_index);
-        canvas_draw_text(canvas, 0, 50, CANVAS_SIZE, &label_center, text);
+        canvas_draw_text(canvas, 4, 143, 60, &label_16_left, text);
     } else {
-        canvas_draw_text(canvas, 0, 50, CANVAS_SIZE, &label_center, state->layer_label);
+        canvas_draw_text(canvas, 4, 143, 60, &label_16_left, state->layer_label);
     }
 
-    rotate_canvas(canvas);
+    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
+    lv_obj_invalidate(widget->screen_canvas);
 }
+
+/* ---------- ZMK event listeners ---------- */
 
 static void set_battery_status(struct zmk_widget_status *widget,
                                struct battery_status_state state) {
@@ -305,8 +311,7 @@ static void set_battery_status(struct zmk_widget_status *widget,
     widget->state.charging = state.usb_present;
 #endif
     widget->state.battery = state.level;
-
-    draw_top(widget->obj, &widget->state);
+    draw_status(widget);
 }
 
 static void battery_status_update_cb(struct battery_status_state state) {
@@ -343,9 +348,7 @@ static void set_output_status(struct zmk_widget_status *widget,
            sizeof(widget->state.profile_connected));
     memcpy(widget->state.profile_bonded, state->profile_bonded,
            sizeof(widget->state.profile_bonded));
-
-    draw_top(widget->obj, &widget->state);
-    draw_bottom(widget->obj, &widget->state);
+    draw_status(widget);
 }
 
 static void output_status_update_cb(struct output_status_state state) {
@@ -386,8 +389,7 @@ ZMK_SUBSCRIPTION(widget_output_status, zmk_ble_active_profile_changed);
 static void set_layer_status(struct zmk_widget_status *widget, struct layer_status_state state) {
     widget->state.layer_index = state.index;
     widget->state.layer_label = state.label;
-
-    draw_bottom(widget->obj, &widget->state);
+    draw_status(widget);
 }
 
 static void layer_status_update_cb(struct layer_status_state state) {
@@ -414,11 +416,8 @@ static void copy_text_field(char *dst, const char *src) {
 }
 
 static struct is_connected_notification get_is_hid_connected(const zmk_event_t *eh) {
-    struct is_connected_notification *notification = as_is_connected_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct is_connected_notification){.value = false};
+    struct is_connected_notification *n = as_is_connected_notification(eh);
+    return n ? *n : (struct is_connected_notification){.value = false};
 }
 
 static void is_hid_connected_update_cb(struct is_connected_notification is_connected) {
@@ -429,9 +428,7 @@ static void is_hid_connected_update_cb(struct is_connected_notification is_conne
             widget->state.media_artist[0] = '\0';
             widget->state.media_title[0] = '\0';
         }
-
-        draw_hid(widget->obj, &widget->state);
-        draw_middle(widget->obj, &widget->state);
+        draw_status(widget);
     }
 }
 
@@ -440,11 +437,8 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_is_connected, struct is_connected_notificatio
 ZMK_SUBSCRIPTION(widget_is_connected, is_connected_notification);
 
 static struct time_notification get_time(const zmk_event_t *eh) {
-    struct time_notification *notification = as_time_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct time_notification){.hour = 0, .minute = 0};
+    struct time_notification *n = as_time_notification(eh);
+    return n ? *n : (struct time_notification){.hour = 0, .minute = 0};
 }
 
 static void time_update_cb(struct time_notification time) {
@@ -452,8 +446,7 @@ static void time_update_cb(struct time_notification time) {
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         widget->state.hour = time.hour;
         widget->state.minute = time.minute;
-
-        draw_hid(widget->obj, &widget->state);
+        draw_status(widget);
     }
 }
 
@@ -461,19 +454,15 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_time, struct time_notification, time_update_c
 ZMK_SUBSCRIPTION(widget_time, time_notification);
 
 static struct volume_notification get_volume(const zmk_event_t *eh) {
-    struct volume_notification *notification = as_volume_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct volume_notification){.value = 0};
+    struct volume_notification *n = as_volume_notification(eh);
+    return n ? *n : (struct volume_notification){.value = 0};
 }
 
 static void volume_update_cb(struct volume_notification volume) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         widget->state.volume = volume.value;
-
-        draw_hid(widget->obj, &widget->state);
+        draw_status(widget);
     }
 }
 
@@ -481,21 +470,16 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_volume, struct volume_notification, volume_up
 ZMK_SUBSCRIPTION(widget_volume, volume_notification);
 
 #ifdef CONFIG_NICE_VIEW_HID_SHOW_LAYOUT
-
 static struct layout_notification get_layout(const zmk_event_t *eh) {
-    struct layout_notification *notification = as_layout_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct layout_notification){.value = 0};
+    struct layout_notification *n = as_layout_notification(eh);
+    return n ? *n : (struct layout_notification){.value = 0};
 }
 
 static void layout_update_cb(struct layout_notification layout) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         widget->state.layout = layout.value;
-
-        draw_hid(widget->obj, &widget->state);
+        draw_status(widget);
     }
 }
 
@@ -504,18 +488,15 @@ ZMK_SUBSCRIPTION(widget_layout, layout_notification);
 #endif
 
 static struct media_title_notification get_media_title(const zmk_event_t *eh) {
-    struct media_title_notification *notification = as_media_title_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct media_title_notification){0};
+    struct media_title_notification *n = as_media_title_notification(eh);
+    return n ? *n : (struct media_title_notification){0};
 }
 
 static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
-        draw_middle(widget->obj, &widget->state);
+        /* central does not draw media — just keep state in sync. */
     }
 }
 
@@ -524,18 +505,14 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title, struct media_title_notification,
 ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
 
 static struct media_artist_notification get_media_artist(const zmk_event_t *eh) {
-    struct media_artist_notification *notification = as_media_artist_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct media_artist_notification){0};
+    struct media_artist_notification *n = as_media_artist_notification(eh);
+    return n ? *n : (struct media_artist_notification){0};
 }
 
 static void media_artist_update_cb(struct media_artist_notification artist) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_artist, artist.value);
-        draw_middle(widget->obj, &widget->state);
     }
 }
 
@@ -543,30 +520,29 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist, struct media_artist_notificatio
                             media_artist_update_cb, get_media_artist)
 ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
-#endif
+#endif /* CONFIG_RAW_HID */
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 160, 68);
+    lv_obj_set_size(widget->obj, NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT);
     lv_obj_set_style_bg_color(widget->obj, LVGL_BACKGROUND, 0);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(widget->obj, 0, 0);
+    lv_obj_set_style_pad_all(widget->obj, 0, 0);
     memset(&widget->state, 0, sizeof(widget->state));
 
-    lv_obj_t *top = lv_canvas_create(widget->obj);
-    lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
+    /* offscreen drawing canvas (68x160 portrait) */
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    lv_obj_set_pos(widget->portrait_canvas, -NICE_VIEW_HID_PORTRAIT_WIDTH - 1, 0);
+    lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
+                         NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
+                         CANVAS_COLOR_FORMAT);
 
-    lv_obj_t *hid = lv_canvas_create(widget->obj);
-    lv_obj_align(hid, LV_ALIGN_TOP_LEFT, 64, 0);
-    lv_canvas_set_buffer(hid, widget->cbuf_hid, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
-
-    lv_obj_t *middle = lv_canvas_create(widget->obj);
-    lv_obj_align(middle, LV_ALIGN_TOP_LEFT, -4, 0);
-    lv_canvas_set_buffer(middle, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
-
-    lv_obj_t *bottom = lv_canvas_create(widget->obj);
-    lv_obj_align(bottom, LV_ALIGN_TOP_LEFT, -44, 0);
-    lv_canvas_set_buffer(bottom, widget->cbuf3, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
+    /* visible canvas (160x68) — receives the rotated buffer */
+    widget->screen_canvas = lv_canvas_create(widget->obj);
+    lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_canvas_set_buffer(widget->screen_canvas, widget->screen_cbuf, NICE_VIEW_HID_SCREEN_WIDTH,
+                         NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
@@ -583,11 +559,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_media_artist_init();
 #endif
 
-    draw_top(widget->obj, &widget->state);
-    draw_hid(widget->obj, &widget->state);
-    draw_middle(widget->obj, &widget->state);
-    draw_bottom(widget->obj, &widget->state);
-
+    draw_status(widget);
     return 0;
 }
 

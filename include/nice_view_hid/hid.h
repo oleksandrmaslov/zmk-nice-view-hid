@@ -4,7 +4,7 @@
 
 #ifdef CONFIG_RAW_HID
 
-#define NICE_VIEW_HID_TEXT_MAX_LEN 30
+#define NICE_VIEW_HID_TEXT_MAX_LEN 64
 
 struct is_connected_notification {
     bool value;

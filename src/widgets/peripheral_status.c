@@ -23,25 +23,50 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
+/*
+ * Layout: 68 × 160 portrait canvas → rotated to 160 × 68 final image.
+ * Mirrors references/Peripheral.svg pixel-for-pixel.
+ *
+ * Header (always):  battery (4, 6), BT (52, 3)
+ * Music block:
+ *   - artist  text @ (4, 29..156),  Montserrat-14, rotated 900 (sideways, reads upward)
+ *   - title   text @ (21, 29..156), Montserrat-18, rotated 900
+ *   - play triangle @ (58, 30) — drawn as a small chevron (5×6) when media is playing
+ *   - "Playing"/"Offline" status @ (54, 39..) Montserrat-14 rotated 900
+ *
+ * Marquee: when title or artist exceeds the available 127 px axial run, advance a
+ * character-window every CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS ms.
+ * Scrolling is paused when battery drops below CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_MIN_BATTERY
+ * (and not charging) — that's the battery-friendly knob.
+ */
+
+#define MEDIA_AXIAL_START 29
+#define MEDIA_AXIAL_END 156
+#define MEDIA_AXIAL_LENGTH (MEDIA_AXIAL_END - MEDIA_AXIAL_START)
+
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 struct peripheral_status_state {
     bool connected;
 };
 
+#if IS_ENABLED(CONFIG_RAW_HID) && IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+static lv_timer_t *media_scroll_timer;
+static uint16_t media_scroll_step;
+#endif
+
 static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
 static void draw_play_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-
+    /* small play chevron, 5×6 — matches mdi:play sketch in references/Peripheral.svg */
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
     static const uint8_t row_widths[] = {7, 5, 5, 3, 3, 1};
     static const uint8_t row_offsets[] = {0, 1, 1, 2, 2, 3};
-
     for (uint8_t i = 0; i < ARRAY_SIZE(row_widths); i++) {
-        canvas_draw_rect(canvas, x + row_offsets[i], y + i, row_widths[i], 1, &rect_dsc);
+        canvas_draw_rect(canvas, x + row_offsets[i], y + i, row_widths[i], 1, &fg);
     }
 }
 
@@ -55,62 +80,169 @@ static void draw_header(lv_obj_t *canvas, const struct status_state *state) {
     }
 }
 
-static const char *media_title_text(const struct status_state *state) {
+static const char *fallback_title(const struct status_state *state) {
 #if IS_ENABLED(CONFIG_RAW_HID)
-    if (!state->connected) {
-        return "Waiting link";
-    }
-
-    if (!state->is_connected) {
-        return "Connect RAW HID";
-    }
-
-    return strlen(state->media_title) > 0 ? state->media_title : "Now playing";
-#else
-    ARG_UNUSED(state);
-    return "Peripheral";
-#endif
-}
-
-static const char *media_artist_text(const struct status_state *state) {
-#if IS_ENABLED(CONFIG_RAW_HID)
-    if (!state->connected) {
-        return "Split offline";
-    }
-
-    if (!state->is_connected) {
-        return "Waiting host";
-    }
-
-    return strlen(state->media_artist) > 0 ? state->media_artist : " ";
+    if (!state->connected) return "Waiting link";
+    if (!state->is_connected) return "Connect RAW HID";
+    return state->media_title[0] ? state->media_title : "Now playing";
 #else
     return state->connected ? "Connected" : "Disconnected";
 #endif
 }
 
-static void draw_media(lv_obj_t *canvas, const struct status_state *state) {
-    lv_draw_label_dsc_t title_dsc;
-    init_label_dsc(&title_dsc, LVGL_FOREGROUND, &lv_font_montserrat_20, LV_TEXT_ALIGN_LEFT);
-    lv_draw_label_dsc_t artist_dsc;
-    init_label_dsc(&artist_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
+static const char *fallback_artist(const struct status_state *state) {
+#if IS_ENABLED(CONFIG_RAW_HID)
+    if (!state->connected) return "Split offline";
+    if (!state->is_connected) return "Waiting host";
+    return state->media_artist[0] ? state->media_artist : " ";
+#else
+    ARG_UNUSED(state);
+    return "";
+#endif
+}
+
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+/*
+ * Char-level marquee: every tick, advance a UTF-8-aware character offset.
+ * We render the substring starting at byte `byte_offset`, so very long titles
+ * gradually slide across the visible axial run. When the substring fits, we
+ * pause at offset 0 (no animation cost).
+ */
+static size_t utf8_char_advance(const char *s) {
+    if (s == NULL || *s == '\0') return 0;
+    uint8_t b = (uint8_t)*s;
+    if (b < 0x80) return 1;
+    if ((b & 0xE0) == 0xC0) return 2;
+    if ((b & 0xF0) == 0xE0) return 3;
+    if ((b & 0xF8) == 0xF0) return 4;
+    return 1; /* invalid — advance by 1 to make progress */
+}
+
+static size_t utf8_strlen(const char *s) {
+    size_t n = 0;
+    while (s != NULL && *s) {
+        s += utf8_char_advance(s);
+        n++;
+    }
+    return n;
+}
+
+static const char *utf8_advance_chars(const char *s, size_t chars) {
+    while (chars > 0 && s != NULL && *s) {
+        s += utf8_char_advance(s);
+        chars--;
+    }
+    return s;
+}
+
+static lv_coord_t measure_text_width(const char *txt, const lv_font_t *font) {
+    lv_point_t size;
+    lv_text_get_size(&size, txt, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    return size.x;
+}
+#endif
+
+static bool scroll_allowed(const struct status_state *state) {
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    if (state->battery >= CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_MIN_BATTERY) return true;
+    return state->charging;
+#else
+    ARG_UNUSED(state);
+    return false;
+#endif
+}
+
+static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t axial_max,
+                              const lv_font_t *font, lv_color_t color, const char *txt,
+                              uint16_t step, bool may_scroll) {
+    lv_draw_label_dsc_t dsc;
+    init_label_dsc(&dsc, color, font, LV_TEXT_ALIGN_LEFT);
+
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    lv_coord_t full_w = measure_text_width(txt, font);
+    if (!may_scroll || full_w <= axial_max) {
+        canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, txt);
+        return;
+    }
+
+    size_t total_chars = utf8_strlen(txt);
+    /* Pause briefly at start (steps 0..3) and end of each cycle so the user can read both ends. */
+    size_t cycle = total_chars + 6;
+    size_t phase = step % cycle;
+    size_t skip = (phase < 3) ? 0 : (phase - 3);
+    if (skip > total_chars) skip = total_chars;
+
+    const char *windowed = utf8_advance_chars(txt, skip);
+    canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, windowed);
+#else
+    ARG_UNUSED(step);
+    ARG_UNUSED(may_scroll);
+    /* Static mode: clip via max_w; LVGL truncates on its own. */
+    canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, txt);
+#endif
+}
+
+static void draw_media(lv_obj_t *canvas, const struct status_state *state, uint16_t step) {
+    const char *title = fallback_title(state);
+    const char *artist = fallback_artist(state);
+
+    bool may_scroll = scroll_allowed(state);
+
+    /* play indicator + status (always show — fall back to "Offline" when the link is down) */
+    draw_play_icon(canvas, 58, 30);
     lv_draw_label_dsc_t status_dsc;
     init_label_dsc(&status_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
-
-    draw_play_icon(canvas, 55, 30);
-    canvas_draw_rotated_text(canvas, 55, 39, 13, 900, &status_dsc,
+    canvas_draw_rotated_text(canvas, 54, 39, MEDIA_AXIAL_LENGTH, 900, &status_dsc,
                              state->connected ? "Playing" : "Offline");
-    canvas_draw_rotated_text(canvas, 4, 29, 14, 900, &artist_dsc, media_artist_text(state));
-    canvas_draw_rotated_text(canvas, 21, 29, 32, 900, &title_dsc, media_title_text(state));
+
+    draw_marquee_text(canvas, 4, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_14,
+                      LVGL_FOREGROUND, artist, step, may_scroll);
+    draw_marquee_text(canvas, 21, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_18,
+                      LVGL_FOREGROUND, title, step, may_scroll);
 }
 
 static void redraw_widget(struct zmk_widget_status *widget) {
     fill_canvas(widget->portrait_canvas);
     draw_header(widget->portrait_canvas, &widget->state);
-    draw_media(widget->portrait_canvas, &widget->state);
+#if IS_ENABLED(CONFIG_RAW_HID) && IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    draw_media(widget->portrait_canvas, &widget->state, media_scroll_step);
+#else
+    draw_media(widget->portrait_canvas, &widget->state, 0);
+#endif
 
     rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
     lv_obj_invalidate(widget->screen_canvas);
 }
+
+#if IS_ENABLED(CONFIG_RAW_HID) && IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+static bool any_widget_needs_scroll(void) {
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        if (!w->state.connected || !w->state.is_connected) continue;
+        if (!scroll_allowed(&w->state)) continue;
+        if (w->state.media_title[0] == '\0' && w->state.media_artist[0] == '\0') continue;
+        /* either field overflowing? */
+        lv_coord_t t = measure_text_width(
+            w->state.media_title[0] ? w->state.media_title : "Now playing",
+            &lv_font_montserrat_18);
+        lv_coord_t a = measure_text_width(
+            w->state.media_artist[0] ? w->state.media_artist : " ", &lv_font_montserrat_14);
+        if (t > MEDIA_AXIAL_LENGTH || a > MEDIA_AXIAL_LENGTH) return true;
+    }
+    return false;
+}
+
+static void media_scroll_tick(lv_timer_t *t) {
+    ARG_UNUSED(t);
+    if (!any_widget_needs_scroll()) {
+        media_scroll_step = 0;
+        return;
+    }
+    media_scroll_step++;
+    struct zmk_widget_status *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) { redraw_widget(w); }
+}
+#endif
 
 static void copy_text_field(char *dst, const char *src) {
 #if IS_ENABLED(CONFIG_RAW_HID)
@@ -127,7 +259,6 @@ static void set_battery_status(struct zmk_widget_status *widget,
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     widget->state.charging = state.usb_present;
 #endif
-
     widget->state.battery = state.level;
     redraw_widget(widget);
 }
@@ -139,7 +270,6 @@ static void battery_status_update_cb(struct battery_status_state state) {
 
 static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
     const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
-
     return (struct battery_status_state){
         .level = (ev != NULL) ? ev->state_of_charge : zmk_battery_state_of_charge(),
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
@@ -150,7 +280,6 @@ static struct battery_status_state battery_status_get_state(const zmk_event_t *e
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
                             battery_status_update_cb, battery_status_get_state)
-
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_battery_state_changed);
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_usb_conn_state_changed);
@@ -178,11 +307,8 @@ ZMK_SUBSCRIPTION(widget_peripheral_status, zmk_split_peripheral_status_changed);
 #ifdef CONFIG_RAW_HID
 
 static struct is_connected_notification get_is_hid_connected(const zmk_event_t *eh) {
-    struct is_connected_notification *notification = as_is_connected_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct is_connected_notification){.value = false};
+    struct is_connected_notification *n = as_is_connected_notification(eh);
+    return n ? *n : (struct is_connected_notification){.value = false};
 }
 
 static void is_hid_connected_update_cb(struct is_connected_notification is_connected) {
@@ -193,7 +319,6 @@ static void is_hid_connected_update_cb(struct is_connected_notification is_conne
             widget->state.media_artist[0] = '\0';
             widget->state.media_title[0] = '\0';
         }
-
         redraw_widget(widget);
     }
 }
@@ -203,17 +328,17 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_is_connected, struct is_connected_notificatio
 ZMK_SUBSCRIPTION(widget_is_connected, is_connected_notification);
 
 static struct media_title_notification get_media_title(const zmk_event_t *eh) {
-    struct media_title_notification *notification = as_media_title_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct media_title_notification){0};
+    struct media_title_notification *n = as_media_title_notification(eh);
+    return n ? *n : (struct media_title_notification){0};
 }
 
 static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+        media_scroll_step = 0;
+#endif
         redraw_widget(widget);
     }
 }
@@ -223,17 +348,17 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_title, struct media_title_notification,
 ZMK_SUBSCRIPTION(widget_media_title, media_title_notification);
 
 static struct media_artist_notification get_media_artist(const zmk_event_t *eh) {
-    struct media_artist_notification *notification = as_media_artist_notification(eh);
-    if (notification) {
-        return *notification;
-    }
-    return (struct media_artist_notification){0};
+    struct media_artist_notification *n = as_media_artist_notification(eh);
+    return n ? *n : (struct media_artist_notification){0};
 }
 
 static void media_artist_update_cb(struct media_artist_notification artist) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_artist, artist.value);
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+        media_scroll_step = 0;
+#endif
         redraw_widget(widget);
     }
 }
@@ -242,7 +367,7 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_media_artist, struct media_artist_notificatio
                             media_artist_update_cb, get_media_artist)
 ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
-#endif
+#endif /* CONFIG_RAW_HID */
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
@@ -271,10 +396,15 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_is_connected_init();
     widget_media_title_init();
     widget_media_artist_init();
+#if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
+    if (media_scroll_timer == NULL) {
+        media_scroll_timer = lv_timer_create(media_scroll_tick,
+                                             CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS, NULL);
+    }
+#endif
 #endif
 
     redraw_widget(widget);
-
     return 0;
 }
 

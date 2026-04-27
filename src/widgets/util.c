@@ -119,80 +119,72 @@ static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color
     lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
 }
 
-static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+/*
+ * Horizontal battery glyph derived 1:1 from references/Connected.svg (#Battery group).
+ * Origin (x, y) corresponds to SVG coordinate (4, 6); the icon spans (x..x+23, y..y+10).
+ *
+ * Layout (case is always drawn; fill scales with `level`):
+ *   - left endcap: column at x+0, y+2..y+8
+ *   - top/bottom edges: rows at y+0 and y+10, x+2..x+20
+ *   - rounded outer corners: pixels at (x+1, y+1), (x+1, y+9), (x+21, y+1), (x+21, y+9)
+ *   - right inner edge: column at x+22, y+2..y+8
+ *   - terminal nub: column at x+23, y+4..y+6
+ *   - level fill: 14 cols × 7 rows starting at (x+3, y+2), softened left col at x+2
+ */
+static void draw_battery_case(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
 
-    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
-    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
-
-    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas, x + 0, y + 2, 1, 7, &fg);
+    canvas_draw_rect(canvas, x + 2, y + 0, 19, 1, &fg);
+    canvas_draw_rect(canvas, x + 2, y + 10, 19, 1, &fg);
     canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
+    canvas_set_px(canvas, x + 1, y + 9, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 21, y + 1, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 21, y + 9, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas, x + 22, y + 2, 1, 7, &fg);
+    canvas_draw_rect(canvas, x + 23, y + 4, 1, 3, &fg);
 }
 
 static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 8, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 7, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 7, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 7, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 6, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 6, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 5, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 5, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 4, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 4, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 3, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 3, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 3, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 2, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
+    /* 7×7 bolt centered over the fill area (origin x=fill_left, y=case y+2) */
+    static const uint8_t bolt[7] = {0x18, 0x30, 0x60, 0xfe, 0x0c, 0x18, 0x30};
+    for (uint8_t row = 0; row < 7; row++) {
+        for (uint8_t col = 0; col < 7; col++) {
+            if (bolt[row] & (1 << (6 - col))) {
+                /* invert: draw background pixel where the fill is, foreground over the gap */
+                canvas_set_px(canvas, x + col, y + row, LVGL_BACKGROUND);
+            }
+        }
+    }
 }
 
 static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
                                       uint8_t level, bool charging) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
 
-    draw_battery_outline(canvas, x, y);
+    draw_battery_case(canvas, x, y);
 
-    uint8_t clamped_level = level > 100 ? 100 : level;
-    const uint8_t height = (19 * clamped_level) / 100;
-    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
+    uint8_t clamped = level > 100 ? 100 : level;
+    /* main fill: up to 14 cols × 7 rows from (x+3, y+2) */
+    uint8_t fill_w = ((uint16_t)14 * clamped + 50) / 100;
+    if (fill_w > 14) fill_w = 14;
 
-    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
+    if (fill_w > 0) {
+        canvas_draw_rect(canvas, x + 3, y + 2, fill_w, 7, &fg);
+        /* soft-rounded leftmost column when the fill reaches it */
+        canvas_draw_rect(canvas, x + 2, y + 3, 1, 5, &fg);
+    }
 
-    if (charging) {
-        draw_battery_lightning_bolt(canvas, x, y);
+    if (charging && fill_w > 0) {
+        /* draw bolt over the fill, centered on the visible body */
+        draw_battery_lightning_bolt(canvas, x + 7, y + 2);
     }
 }
 
 void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
+    draw_elemental_battery_at(canvas, 4, 6, state->battery, state->charging);
 }
 
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
