@@ -58,59 +58,15 @@ static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
-static void fg_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t dsc;
-    init_rect_dsc(&dsc, LVGL_FOREGROUND);
-    canvas_draw_rect(canvas, x, y, 1, 1, &dsc);
-}
-
-static void bg_pixel(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t dsc;
-    init_rect_dsc(&dsc, LVGL_BACKGROUND);
-    canvas_draw_rect(canvas, x, y, 1, 1, &dsc);
-}
-
-/* ---------- Profile dots (10×10), pixel-perfect from Connected.svg ---------- */
-
-static void draw_profile_selected(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t fg;
-    init_rect_dsc(&fg, LVGL_FOREGROUND);
-    canvas_draw_rect(canvas, x, y, 10, 10, &fg);
-    bg_pixel(canvas, x, y);
-    bg_pixel(canvas, x + 9, y);
-    bg_pixel(canvas, x, y + 9);
-    bg_pixel(canvas, x + 9, y + 9);
-}
-
-static void draw_profile_bonded(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    /* outlined 9×9 stroke + 4 inner-corner accents; matches #Bounded profile */
-    lv_draw_rect_dsc_t fg;
-    init_rect_dsc(&fg, LVGL_FOREGROUND);
-    canvas_draw_rect(canvas, x, y, 10, 1, &fg);
-    canvas_draw_rect(canvas, x, y + 9, 10, 1, &fg);
-    canvas_draw_rect(canvas, x, y, 1, 10, &fg);
-    canvas_draw_rect(canvas, x + 9, y, 1, 10, &fg);
-    fg_pixel(canvas, x + 1, y + 1);
-    fg_pixel(canvas, x + 8, y + 1);
-    fg_pixel(canvas, x + 1, y + 8);
-    fg_pixel(canvas, x + 8, y + 8);
-}
-
-static void draw_profile_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    /* dotted outline — every other px on each side; matches #Free profile spirit */
-    for (uint8_t i = 0; i < 10; i += 2) {
-        fg_pixel(canvas, x + i, y);
-        fg_pixel(canvas, x + i, y + 9);
-        fg_pixel(canvas, x, y + i);
-        fg_pixel(canvas, x + 9, y + i);
-    }
-}
-
 static void draw_profile_dot(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t index,
                              const struct status_state *state) {
-    bool selected = (index == state->active_profile_index) && state->active_profile_connected;
-    if (selected) {
+    bool is_active = (index == state->active_profile_index);
+
+    if (is_active && state->active_profile_connected) {
         draw_profile_selected(canvas, x, y);
+    } else if (is_active && !state->active_profile_bonded) {
+        /* user is on this profile slot but it has no bonded peer yet — pairing mode */
+        draw_profile_selected_free(canvas, x, y);
     } else if (state->profile_bonded[index]) {
         draw_profile_bonded(canvas, x, y);
     } else {
@@ -118,11 +74,9 @@ static void draw_profile_dot(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8
     }
 }
 
-/* ---------- BT / USB indicator ---------- */
-
+/* BT / USB indicator with profile number to the left, à la nice-view-elemental */
 static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *state) {
     if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
-        /* USB icon: 18×9. Place its right edge near x=64 to align with where BT sits. */
         draw_elemental_usb_logo(canvas, 46, 7);
         return;
     }
@@ -136,64 +90,18 @@ static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *s
     } else {
         draw_elemental_bluetooth_searching(canvas, 52, 3);
     }
-}
 
-/* ---------- Globe + speaker glyphs (drawn vector, 10×10 / 11×11) ---------- */
-
-static void draw_language_globe(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    /* 11×11 globe centered at (x+5, y+5): circle outline + meridian + equator */
-    lv_draw_arc_dsc_t arc;
-    init_arc_dsc(&arc, LVGL_FOREGROUND, 1);
-    canvas_draw_arc(canvas, x + 5, y + 5, 5, 0, 360, &arc);
-
-    lv_draw_line_dsc_t line;
-    init_line_dsc(&line, LVGL_FOREGROUND, 1);
-    const lv_point_t equator[] = {{x + 1, y + 5}, {x + 9, y + 5}};
-    canvas_draw_line(canvas, equator, 2, &line);
-    const lv_point_t meridian[] = {{x + 5, y + 1}, {x + 5, y + 9}};
-    canvas_draw_line(canvas, meridian, 2, &line);
-    /* outer parallels */
-    const lv_point_t parallel_top[] = {{x + 2, y + 3}, {x + 8, y + 3}};
-    canvas_draw_line(canvas, parallel_top, 2, &line);
-    const lv_point_t parallel_bot[] = {{x + 2, y + 7}, {x + 8, y + 7}};
-    canvas_draw_line(canvas, parallel_bot, 2, &line);
-}
-
-static void draw_speaker_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t volume) {
-    lv_draw_rect_dsc_t fg;
-    init_rect_dsc(&fg, LVGL_FOREGROUND);
-
-    /* speaker cone: 4×6 body at (x, y+2), then triangular flare to (x+4..x+5, y..y+9) */
-    canvas_draw_rect(canvas, x, y + 2, 3, 6, &fg);
-    fg_pixel(canvas, x + 3, y + 1);
-    fg_pixel(canvas, x + 3, y + 8);
-    fg_pixel(canvas, x + 4, y);
-    fg_pixel(canvas, x + 4, y + 9);
-    fg_pixel(canvas, x + 5, y);
-    fg_pixel(canvas, x + 5, y + 9);
-
-    /* sound waves: small if vol > 0, large if vol > 50; X if muted */
-    if (volume == 0) {
-        lv_draw_line_dsc_t line;
-        init_line_dsc(&line, LVGL_FOREGROUND, 1);
-        const lv_point_t a[] = {{x + 7, y + 2}, {x + 11, y + 7}};
-        canvas_draw_line(canvas, a, 2, &line);
-        const lv_point_t b[] = {{x + 11, y + 2}, {x + 7, y + 7}};
-        canvas_draw_line(canvas, b, 2, &line);
-    } else {
-        fg_pixel(canvas, x + 7, y + 3);
-        fg_pixel(canvas, x + 8, y + 4);
-        fg_pixel(canvas, x + 8, y + 5);
-        fg_pixel(canvas, x + 7, y + 6);
-        if (volume > 50) {
-            fg_pixel(canvas, x + 9, y + 2);
-            fg_pixel(canvas, x + 10, y + 3);
-            fg_pixel(canvas, x + 11, y + 4);
-            fg_pixel(canvas, x + 11, y + 5);
-            fg_pixel(canvas, x + 10, y + 6);
-            fg_pixel(canvas, x + 9, y + 7);
-        }
-    }
+    /*
+     * Profile number (1..5) — placed below the BT icon in portrait so it lands
+     * to the LEFT of the BT icon on the rotated 160×68 display, matching the
+     * placement used by kevinpastor/nice-view-elemental.
+     */
+    lv_draw_label_dsc_t num_dsc;
+    init_label_dsc(&num_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT);
+    char digit[2] = {(char)('1' + MIN(state->active_profile_index,
+                                      (uint8_t)(NICE_VIEW_HID_PROFILE_COUNT - 1))),
+                     '\0'};
+    canvas_draw_text(canvas, 52, 22, 12, &num_dsc, digit);
 }
 
 /* ---------- Layout name (from comma-separated CONFIG_NICE_VIEW_HID_LAYOUTS) ---------- */
@@ -237,9 +145,13 @@ static void draw_status(struct zmk_widget_status *widget) {
 
     fill_canvas(canvas);
 
-    /* battery: SVG (4, 6) */
+    /*
+     * Battery is the 11×24 vertical glyph from nice-view-elemental, anchored at
+     * portrait (4, 3). After the portrait → 160×68 rotation it lands as a
+     * 24-wide × 11-tall HORIZONTAL battery near the right edge of the display.
+     */
     draw_battery(canvas, state);
-    /* BT/USB: SVG (52, 3) */
+    /* BT/USB anchored at portrait (52, 3) */
     draw_output_indicator(canvas, state);
 
     /* middle band — y ≈ 28..92 */
@@ -247,8 +159,6 @@ static void draw_status(struct zmk_widget_status *widget) {
     init_label_dsc(&label_18, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_LEFT);
     lv_draw_label_dsc_t label_16_left;
     init_label_dsc(&label_16_left, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT);
-    lv_draw_label_dsc_t label_16_center;
-    init_label_dsc(&label_16_center, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_CENTER);
     lv_draw_label_dsc_t label_14_left;
     init_label_dsc(&label_14_left, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
 
@@ -259,27 +169,26 @@ static void draw_status(struct zmk_widget_status *widget) {
         snprintf(time, sizeof(time), "%02u:%02u", state->hour, state->minute);
         canvas_draw_text(canvas, 4, 31, 60, &label_18, time);
 
-        /* language: globe @ (4, 60) + layout text @ (18, 60) */
+        /* language: globe icon @ (4, 60) + layout text @ (18, 60) */
         char layout[10] = {};
         get_layout_text(state->layout, layout, sizeof(layout));
-        draw_language_globe(canvas, 4, 60);
+        draw_language_icon(canvas, 4, 60);
         canvas_draw_text(canvas, 18, 60, 46, &label_14_left, layout);
 
-        /* volume: speaker @ (4, 79) + value @ (20, 78) */
+        /* volume: composite speaker icon @ (4, 78) + value @ (22, 76) */
         char volume[5] = {};
         snprintf(volume, sizeof(volume), "%u%%", state->volume);
-        draw_speaker_icon(canvas, 4, 79, state->volume);
-        canvas_draw_text(canvas, 20, 76, 44, &label_14_left, volume);
+        draw_volume_icon(canvas, 4, 78, state->volume);
+        canvas_draw_text(canvas, 22, 76, 42, &label_14_left, volume);
     } else {
-        /* "Connect / RAW HID" centered prompt — replaces middle band */
-        canvas_draw_text(canvas, 0, 44, 68, &label_16_center, "Connect");
-        canvas_draw_text(canvas, 0, 64, 68, &label_16_center, "RAW HID");
+        /* left-aligned "Connect / RAW HID" prompt — replaces middle band */
+        canvas_draw_text(canvas, 4, 44, 60, &label_16_left, "Connect");
+        canvas_draw_text(canvas, 4, 64, 60, &label_16_left, "RAW HID");
     }
 #else
     ARG_UNUSED(label_18);
     ARG_UNUSED(label_16_left);
     ARG_UNUSED(label_14_left);
-    ARG_UNUSED(label_16_center);
 #endif
 
     /* profile section */
@@ -544,6 +453,17 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_canvas_set_buffer(widget->screen_canvas, widget->screen_cbuf, NICE_VIEW_HID_SCREEN_WIDTH,
                          NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
 
+    /*
+     * Paint a clean background up-front so we don't show partial state.
+     * The widget_*_init() calls below each schedule an initial state fetch
+     * that triggers draw_status(); ordering them after a clean canvas
+     * means the first fully-populated draw is what the user sees, instead
+     * of icons appearing before text labels.
+     */
+    fill_canvas(widget->portrait_canvas);
+    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
+    lv_obj_invalidate(widget->screen_canvas);
+
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
     widget_output_status_init();
@@ -559,7 +479,6 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_media_artist_init();
 #endif
 
-    draw_status(widget);
     return 0;
 }
 

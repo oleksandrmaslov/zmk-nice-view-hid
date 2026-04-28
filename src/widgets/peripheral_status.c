@@ -157,11 +157,18 @@ static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_c
                               uint16_t step, bool may_scroll) {
     lv_draw_label_dsc_t dsc;
     init_label_dsc(&dsc, color, font, LV_TEXT_ALIGN_LEFT);
+    /*
+     * LV_TEXT_FLAG_EXPAND tells LVGL to ignore max_w when laying out text,
+     * which is what we want for sideways media labels — without it, "Bohemian
+     * Rhapsody" wraps onto a second line that LVGL renders as a side-by-side
+     * column after rotation, giving the "narrow text field" artifact.
+     */
+    dsc.flag |= LV_TEXT_FLAG_EXPAND;
 
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
     lv_coord_t full_w = measure_text_width(txt, font);
     if (!may_scroll || full_w <= axial_max) {
-        canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, txt);
+        canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, txt);
         return;
     }
 
@@ -173,12 +180,13 @@ static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_c
     if (skip > total_chars) skip = total_chars;
 
     const char *windowed = utf8_advance_chars(txt, skip);
-    canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, windowed);
+    canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, windowed);
 #else
     ARG_UNUSED(step);
     ARG_UNUSED(may_scroll);
-    /* Static mode: clip via max_w; LVGL truncates on its own. */
-    canvas_draw_rotated_text(canvas, x, y, axial_max + 4, 900, &dsc, txt);
+    ARG_UNUSED(axial_max);
+    /* Static mode: rely on canvas clipping rather than wrapping. */
+    canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, txt);
 #endif
 }
 
@@ -192,7 +200,8 @@ static void draw_media(lv_obj_t *canvas, const struct status_state *state, uint1
     draw_play_icon(canvas, 58, 30);
     lv_draw_label_dsc_t status_dsc;
     init_label_dsc(&status_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
-    canvas_draw_rotated_text(canvas, 54, 39, MEDIA_AXIAL_LENGTH, 900, &status_dsc,
+    status_dsc.flag |= LV_TEXT_FLAG_EXPAND;
+    canvas_draw_rotated_text(canvas, 54, 39, LV_COORD_MAX, 900, &status_dsc,
                              state->connected ? "Playing" : "Offline");
 
     draw_marquee_text(canvas, 4, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_14,

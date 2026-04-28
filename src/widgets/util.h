@@ -73,6 +73,12 @@ void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y)
 void draw_elemental_bluetooth_logo_outlined(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_bluetooth_searching(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_usb_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_profile_selected(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_profile_selected_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_profile_bonded(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_profile_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_language_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
+void draw_volume_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t level);
 void init_label_dsc(lv_draw_label_dsc_t *label_dsc, lv_color_t color, const lv_font_t *font,
                     lv_text_align_t align);
 void init_rect_dsc(lv_draw_rect_dsc_t *rect_dsc, lv_color_t bg_color);

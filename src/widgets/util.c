@@ -94,6 +94,85 @@ static const lv_image_dsc_t usb_logo = {
     .data = usb_logo_map,
 };
 
+/*
+ * Custom UI bitmaps prepared by the user (references/*.c). The original
+ * arrays were exported in LVGL 8 LV_IMG_CF_ALPHA_1BIT layout (no palette,
+ * 1 bit/pixel, MSB first, padded to byte). We re-wrap that same pixel data
+ * with the LVGL 9 LV_COLOR_FORMAT_I1 palette prefix used elsewhere in this
+ * module so they integrate with the existing canvas draw helpers.
+ */
+
+/* Profile dots — 10×10, stride 2 */
+static const uint8_t selected_profile_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0,
+    0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0, 0xff, 0xc0,
+};
+static const uint8_t bonded_profile_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0xff, 0xc0, 0xc0, 0xc0, 0x80, 0x40, 0x80, 0x40, 0x80, 0x40,
+    0x80, 0x40, 0x80, 0x40, 0x80, 0x40, 0xc0, 0xc0, 0xff, 0xc0,
+};
+static const uint8_t free_profile_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x55, 0x00, 0x00, 0x40, 0x80, 0x00, 0x00, 0x40, 0x80, 0x00,
+    0x00, 0x40, 0x80, 0x00, 0x00, 0x40, 0x80, 0x00, 0x2a, 0x80,
+};
+static const uint8_t selected_free_profile_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x55, 0x00, 0x7f, 0xc0, 0xff, 0x80, 0x7f, 0xc0, 0xff, 0x80,
+    0x7f, 0xc0, 0xff, 0x80, 0x7f, 0xc0, 0xff, 0x80, 0x2a, 0x80,
+};
+
+/* 10×10 globe icon */
+static const uint8_t language_icon_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x1e, 0x00, 0x73, 0x80, 0x52, 0x80, 0xff, 0xc0, 0xa1, 0x40,
+    0xa1, 0x40, 0xff, 0xc0, 0x52, 0x80, 0x73, 0x80, 0x1e, 0x00,
+};
+
+/* Volume / speaker glyphs */
+static const uint8_t speaker_mute_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x08, 0x00, 0x1a, 0x10, 0xf9, 0x20, 0xf8, 0xc0,
+    0xf8, 0x40, 0xf9, 0x20, 0x1a, 0x10, 0x08, 0x00,
+};
+static const uint8_t speaker_middle_volume_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x08, 0x18, 0xfa, 0xfb, 0xfb, 0xfa, 0x18, 0x08,
+};
+static const uint8_t volume_loud_wave_map[] = {
+    ELEMENTAL_BG_COLOR_BYTES, ELEMENTAL_FG_COLOR_BYTES,
+    0x80, 0x60, 0x20, 0x10, 0x10, 0x10, 0x10, 0x20, 0x60, 0x80,
+};
+
+#define DEFINE_I1_IMG(_name, _w, _h, _stride)                                                      \
+    static const lv_image_dsc_t _name = {                                                          \
+        .header.magic = LV_IMAGE_HEADER_MAGIC,                                                     \
+        .header.cf = LV_COLOR_FORMAT_I1,                                                           \
+        .header.w = (_w),                                                                          \
+        .header.h = (_h),                                                                          \
+        .header.stride = (_stride),                                                                \
+        .data_size = sizeof(_name##_map),                                                          \
+        .data = _name##_map,                                                                       \
+    }
+
+DEFINE_I1_IMG(selected_profile, 10, 10, 2);
+DEFINE_I1_IMG(bonded_profile, 10, 10, 2);
+DEFINE_I1_IMG(free_profile, 10, 10, 2);
+DEFINE_I1_IMG(selected_free_profile, 10, 10, 2);
+DEFINE_I1_IMG(language_icon, 10, 10, 2);
+DEFINE_I1_IMG(speaker_mute, 12, 8, 2);
+DEFINE_I1_IMG(speaker_middle_volume, 8, 8, 1);
+DEFINE_I1_IMG(volume_loud_wave, 4, 10, 1);
+
+static void draw_static_img(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                            const lv_image_dsc_t *src) {
+    lv_draw_image_dsc_t dsc;
+    lv_draw_image_dsc_init(&dsc);
+    canvas_draw_img(canvas, x, y, src, &dsc);
+}
+
 void rotate_canvas(lv_obj_t *canvas) {
     uint8_t *buf = lv_canvas_get_draw_buf(canvas)->data;
     static uint8_t buf_copy[CANVAS_BUF_SIZE];
@@ -120,71 +199,84 @@ static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color
 }
 
 /*
- * Horizontal battery glyph derived 1:1 from references/Connected.svg (#Battery group).
- * Origin (x, y) corresponds to SVG coordinate (4, 6); the icon spans (x..x+23, y..y+10).
- *
- * Layout (case is always drawn; fill scales with `level`):
- *   - left endcap: column at x+0, y+2..y+8
- *   - top/bottom edges: rows at y+0 and y+10, x+2..x+20
- *   - rounded outer corners: pixels at (x+1, y+1), (x+1, y+9), (x+21, y+1), (x+21, y+9)
- *   - right inner edge: column at x+22, y+2..y+8
- *   - terminal nub: column at x+23, y+4..y+6
- *   - level fill: 14 cols × 7 rows starting at (x+3, y+2), softened left col at x+2
+ * Vertical battery glyph and lightning bolt — taken verbatim from
+ * kevinpastor/nice-view-elemental (MIT). Origin (x, y) corresponds to
+ * the top-left of the case; visible art occupies (x..x+10, y..y+23).
  */
-static void draw_battery_case(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t fg;
-    init_rect_dsc(&fg, LVGL_FOREGROUND);
+static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
 
-    canvas_draw_rect(canvas, x + 0, y + 2, 1, 7, &fg);
-    canvas_draw_rect(canvas, x + 2, y + 0, 19, 1, &fg);
-    canvas_draw_rect(canvas, x + 2, y + 10, 19, 1, &fg);
+    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
+    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
+    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
+
+    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
     canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 9, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 21, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 21, y + 9, LVGL_FOREGROUND);
-    canvas_draw_rect(canvas, x + 22, y + 2, 1, 7, &fg);
-    canvas_draw_rect(canvas, x + 23, y + 4, 1, 3, &fg);
+
+    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
 }
 
 static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    /* 7×7 bolt centered over the fill area (origin x=fill_left, y=case y+2) */
-    static const uint8_t bolt[7] = {0x18, 0x30, 0x60, 0xfe, 0x0c, 0x18, 0x30};
-    for (uint8_t row = 0; row < 7; row++) {
-        for (uint8_t col = 0; col < 7; col++) {
-            if (bolt[row] & (1 << (6 - col))) {
-                /* invert: draw background pixel where the fill is, foreground over the gap */
-                canvas_set_px(canvas, x + col, y + row, LVGL_BACKGROUND);
-            }
-        }
-    }
+    canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 8, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 7, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 7, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 7, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 6, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 6, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 6, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 6, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 5, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 5, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 5, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 4, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 4, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 4, y + 12, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 4, y + 13, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 3, y + 10, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 3, y + 11, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 3, y + 12, LVGL_BACKGROUND);
+
+    canvas_set_px(canvas, x + 2, y + 9, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 10, LVGL_FOREGROUND);
+    canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
 }
 
 static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
                                       uint8_t level, bool charging) {
-    lv_draw_rect_dsc_t fg;
-    init_rect_dsc(&fg, LVGL_FOREGROUND);
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
 
-    draw_battery_case(canvas, x, y);
+    draw_battery_outline(canvas, x, y);
 
-    uint8_t clamped = level > 100 ? 100 : level;
-    /* main fill: up to 14 cols × 7 rows from (x+3, y+2) */
-    uint8_t fill_w = ((uint16_t)14 * clamped + 50) / 100;
-    if (fill_w > 14) fill_w = 14;
+    uint8_t clamped_level = level > 100 ? 100 : level;
+    const uint8_t height = (19 * clamped_level) / 100;
+    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
 
-    if (fill_w > 0) {
-        canvas_draw_rect(canvas, x + 3, y + 2, fill_w, 7, &fg);
-        /* soft-rounded leftmost column when the fill reaches it */
-        canvas_draw_rect(canvas, x + 2, y + 3, 1, 5, &fg);
-    }
+    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
+    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
 
-    if (charging && fill_w > 0) {
-        /* draw bolt over the fill, centered on the visible body */
-        draw_battery_lightning_bolt(canvas, x + 7, y + 2);
+    if (charging) {
+        draw_battery_lightning_bolt(canvas, x, y);
     }
 }
 
 void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    draw_elemental_battery_at(canvas, 4, 6, state->battery, state->charging);
+    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
 }
 
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
@@ -209,6 +301,48 @@ void draw_elemental_usb_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     lv_draw_image_dsc_t img_dsc;
     lv_draw_image_dsc_init(&img_dsc);
     canvas_draw_img(canvas, x, y, &usb_logo, &img_dsc);
+}
+
+void draw_profile_selected(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    draw_static_img(canvas, x, y, &selected_profile);
+}
+
+void draw_profile_bonded(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    draw_static_img(canvas, x, y, &bonded_profile);
+}
+
+void draw_profile_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    draw_static_img(canvas, x, y, &free_profile);
+}
+
+void draw_profile_selected_free(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    draw_static_img(canvas, x, y, &selected_free_profile);
+}
+
+void draw_language_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    draw_static_img(canvas, x, y, &language_icon);
+}
+
+/*
+ * Volume icon dispatcher.
+ *   level == 0          → speaker_mute (12×8)
+ *   level <= 50         → speaker_middle_volume (8×8) at the speaker position
+ *   level > 50          → speaker_middle_volume + volume_loud_wave (4×10) appended
+ *                          to the right of the speaker
+ */
+void draw_volume_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t level) {
+    if (level == 0) {
+        /* mute: 12×8 — anchor by speaker body so visual center stays put */
+        draw_static_img(canvas, x, y, &speaker_mute);
+        return;
+    }
+    /* speaker + medium waves baked in (8×8) */
+    draw_static_img(canvas, x, y, &speaker_middle_volume);
+    if (level > 50) {
+        /* extra outer wave (4×10) — sits flush to the right of the speaker block,
+         * shifted up 1 px so its 10-tall extent is vertically centered on the 8-tall body. */
+        draw_static_img(canvas, x + 8, y - 1, &volume_loud_wave);
+    }
 }
 
 void init_label_dsc(lv_draw_label_dsc_t *label_dsc, lv_color_t color, const lv_font_t *font,
