@@ -199,84 +199,71 @@ static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color
 }
 
 /*
- * Vertical battery glyph and lightning bolt — taken verbatim from
- * kevinpastor/nice-view-elemental (MIT). Origin (x, y) corresponds to
- * the top-left of the case; visible art occupies (x..x+10, y..y+23).
+ * Horizontal battery — based on the upstream ZMK nice_view shape (which is
+ * what the panel renders correctly without any per-canvas rotation). 33×12
+ * total, terminal nub on the right.  Origin (x, y) is the top-left of the
+ * case rectangle.  Charging bolt is the kevinpastor/nice-view-elemental
+ * lightning Z, ported over and rotated 90° so it reads upright inside the
+ * horizontal body.
  */
-static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
-    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
-
-    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
-}
-
 static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 8, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 7, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 7, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 7, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 6, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 6, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 5, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 5, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 4, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 4, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 13, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 3, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 3, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 3, y + 12, LVGL_BACKGROUND);
-
-    canvas_set_px(canvas, x + 2, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
+    /*
+     * 7×5 bolt; FG pixels are the bolt itself, BG pixels carve a 1-px halo
+     * from the surrounding fill so the bolt stays visible at every level.
+     * Pattern (relative to (x, y), col 0..6 / row 0..4):
+     *
+     *     col:  0  1  2  3  4  5  6
+     *     row 0:  .  BG BG BG BG .  .
+     *     row 1:  FG BG BG FG FG BG .
+     *     row 2:  BG FG FG FG FG FG .
+     *     row 3:  .  BG FG FG BG BG FG
+     *     row 4:  .  .  BG BG BG .  BG
+     */
+    static const struct { int8_t dx, dy; bool fg; } pixels[] = {
+        {0, 1, true},  {1, 2, true},  {2, 2, true},  {2, 3, true},
+        {3, 1, true},  {3, 2, true},  {3, 3, true},  {4, 1, true},
+        {4, 2, true},  {5, 2, true},  {6, 3, true},
+        {1, 0, false}, {2, 0, false}, {3, 0, false}, {4, 0, false},
+        {0, 2, false}, {1, 1, false}, {2, 1, false}, {5, 1, false},
+        {1, 3, false}, {4, 3, false}, {5, 3, false},
+        {2, 4, false}, {3, 4, false}, {4, 4, false}, {6, 4, false},
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(pixels); i++) {
+        canvas_set_px(canvas, x + pixels[i].dx, y + pixels[i].dy,
+                      pixels[i].fg ? LVGL_FOREGROUND : LVGL_BACKGROUND);
+    }
 }
 
-static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
-                                      uint8_t level, bool charging) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+static void draw_horizontal_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                                       uint8_t level, bool charging) {
+    lv_draw_rect_dsc_t fg, bg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
+    init_rect_dsc(&bg, LVGL_BACKGROUND);
 
-    draw_battery_outline(canvas, x, y);
+    /* outer case + inner cutout (matches upstream nice_view) */
+    canvas_draw_rect(canvas, x, y, 29, 12, &fg);
+    canvas_draw_rect(canvas, x + 1, y + 1, 27, 10, &bg);
 
-    uint8_t clamped_level = level > 100 ? 100 : level;
-    const uint8_t height = (19 * clamped_level) / 100;
-    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
+    /* level fill: up to 25 cols × 8 rows from (x+2, y+2) */
+    uint8_t clamped = level > 100 ? 100 : level;
+    uint8_t fill_w = ((uint16_t)25 * clamped + 50) / 100;
+    if (fill_w > 25) fill_w = 25;
+    if (fill_w > 0) {
+        canvas_draw_rect(canvas, x + 2, y + 2, fill_w, 8, &fg);
+    }
 
-    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
+    /* terminal nub (right side) */
+    canvas_draw_rect(canvas, x + 29, y + 3, 3, 6, &fg);
+    canvas_draw_rect(canvas, x + 30, y + 4, 1, 4, &bg);
 
     if (charging) {
-        draw_battery_lightning_bolt(canvas, x, y);
+        /* bolt 7w × 5h, centered in the 25×8 body interior — origin offset (9, 3) */
+        draw_battery_lightning_bolt(canvas, x + 9, y + 3);
     }
 }
 
 void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
+    draw_horizontal_battery_at(canvas, 4, 4, state->battery, state->charging);
 }
 
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {

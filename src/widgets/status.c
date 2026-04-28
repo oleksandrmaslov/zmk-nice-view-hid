@@ -33,9 +33,24 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #endif
 
 /*
- * Layout coordinates are in the 68 × 160 portrait design space.
- * They map 1:1 to references/Connected.svg / references/No RAWHID.svg, and
- * the final 160 × 68 image is produced by rotate_portrait_canvas().
+ * Everything is drawn directly on the 160×68 screen canvas in display-native
+ * coordinates — no portrait canvas, no software rotation. This matches the
+ * upstream nice_view shield's working pattern (the ls0xx panel renders the
+ * 160×68 buffer directly).
+ *
+ * Visual layout (origin top-left, x → right, y → down):
+ *
+ *   y=  ┌──────────────────────────────────────────────────────────────────┐
+ *    0  │ [BAT 33×12]                                          [#] [BT]   │
+ *   16  ├──────────────────────────────────────────────────────────────────┤
+ *   20  │ 12:34       [globe] EN     [spkr] 85%                            │
+ *   38  ├──────────────────────────────────────────────────────────────────┤
+ *   46  │ ●  ○  ○  ⊠  ○        Layer: Base                                 │
+ *       └──────────────────────────────────────────────────────────────────┘
+ *      x=0      40      70    90       115             170
+ *
+ * In the disconnected state the middle row is replaced with a left-aligned
+ * "Connect" / "RAW HID" prompt at Montserrat-14.
  */
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
@@ -74,37 +89,36 @@ static void draw_profile_dot(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8
     }
 }
 
-/* BT / USB indicator with profile number to the left, à la nice-view-elemental */
 static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *state) {
-    if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
-        draw_elemental_usb_logo(canvas, 46, 7);
-        return;
-    }
-
-    if (state->active_profile_bonded) {
-        if (state->active_profile_connected) {
-            draw_elemental_bluetooth_logo(canvas, 52, 3);
-        } else {
-            draw_elemental_bluetooth_logo_outlined(canvas, 52, 3);
-        }
-    } else {
-        draw_elemental_bluetooth_searching(canvas, 52, 3);
-    }
-
     /*
-     * Profile number (1..5) — placed below the BT icon in portrait so it lands
-     * to the LEFT of the BT icon on the rotated 160×68 display, matching the
-     * placement used by kevinpastor/nice-view-elemental.
+     * Profile number first — placed to the LEFT of where the BT/USB logo
+     * lands. We draw it before the icon so the icon visually sits to its
+     * right.
      */
     lv_draw_label_dsc_t num_dsc;
     init_label_dsc(&num_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT);
     char digit[2] = {(char)('1' + MIN(state->active_profile_index,
                                       (uint8_t)(NICE_VIEW_HID_PROFILE_COUNT - 1))),
                      '\0'};
-    canvas_draw_text(canvas, 52, 22, 12, &num_dsc, digit);
-}
+    canvas_draw_text(canvas, 126, 1, 14, &num_dsc, digit);
 
-/* ---------- Layout name (from comma-separated CONFIG_NICE_VIEW_HID_LAYOUTS) ---------- */
+    if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
+        /* USB icon (18×9): right-anchored at x=158, vertically centered ~y=4 */
+        draw_elemental_usb_logo(canvas, 142, 4);
+        return;
+    }
+
+    /* BT icon (12×17) */
+    if (state->active_profile_bonded) {
+        if (state->active_profile_connected) {
+            draw_elemental_bluetooth_logo(canvas, 146, 0);
+        } else {
+            draw_elemental_bluetooth_logo_outlined(canvas, 146, 0);
+        }
+    } else {
+        draw_elemental_bluetooth_searching(canvas, 146, 0);
+    }
+}
 
 static void get_layout_text(uint8_t layout_index, char *out, size_t out_size) {
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_SHOW_LAYOUT)
@@ -125,7 +139,6 @@ static void get_layout_text(uint8_t layout_index, char *out, size_t out_size) {
         snprintf(out, out_size, "%u", layout_index);
     }
 
-    /* upper-case for display */
     for (size_t j = 0; out[j] != '\0' && j + 1 < out_size; j++) {
         if (out[j] >= 'a' && out[j] <= 'z') {
             out[j] = out[j] - 'a' + 'A';
@@ -137,78 +150,61 @@ static void get_layout_text(uint8_t layout_index, char *out, size_t out_size) {
 #endif
 }
 
-/* ---------- Top-level draw ---------- */
-
 static void draw_status(struct zmk_widget_status *widget) {
-    lv_obj_t *canvas = widget->portrait_canvas;
+    lv_obj_t *canvas = widget->screen_canvas;
     const struct status_state *state = &widget->state;
 
     fill_canvas(canvas);
 
-    /*
-     * Battery is the 11×24 vertical glyph from nice-view-elemental, anchored at
-     * portrait (4, 3). After the portrait → 160×68 rotation it lands as a
-     * 24-wide × 11-tall HORIZONTAL battery near the right edge of the display.
-     */
+    /* Row 1: battery + BT/USB + profile number */
     draw_battery(canvas, state);
-    /* BT/USB anchored at portrait (52, 3) */
     draw_output_indicator(canvas, state);
 
-    /* middle band — y ≈ 28..92 */
     lv_draw_label_dsc_t label_18;
     init_label_dsc(&label_18, LVGL_FOREGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_LEFT);
-    lv_draw_label_dsc_t label_16_left;
-    init_label_dsc(&label_16_left, LVGL_FOREGROUND, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT);
-    lv_draw_label_dsc_t label_14_left;
-    init_label_dsc(&label_14_left, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
+    lv_draw_label_dsc_t label_14;
+    init_label_dsc(&label_14, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
 
+    /* Row 2: time / language / volume — or Connect prompt when disconnected */
 #if IS_ENABLED(CONFIG_RAW_HID)
     if (state->is_connected) {
-        /* time @ (4, 31) Montserrat-18 */
         char time[8] = {};
         snprintf(time, sizeof(time), "%02u:%02u", state->hour, state->minute);
-        canvas_draw_text(canvas, 4, 31, 60, &label_18, time);
+        canvas_draw_text(canvas, 4, 19, 56, &label_18, time);
 
-        /* language: globe icon @ (4, 60) + layout text @ (18, 60) */
         char layout[10] = {};
         get_layout_text(state->layout, layout, sizeof(layout));
-        draw_language_icon(canvas, 4, 60);
-        canvas_draw_text(canvas, 18, 60, 46, &label_14_left, layout);
+        draw_language_icon(canvas, 66, 22);
+        canvas_draw_text(canvas, 78, 22, 22, &label_14, layout);
 
-        /* volume: composite speaker icon @ (4, 78) + value @ (22, 76) */
-        char volume[5] = {};
+        char volume[6] = {};
         snprintf(volume, sizeof(volume), "%u%%", state->volume);
-        draw_volume_icon(canvas, 4, 78, state->volume);
-        canvas_draw_text(canvas, 22, 76, 42, &label_14_left, volume);
+        draw_volume_icon(canvas, 102, 22, state->volume);
+        canvas_draw_text(canvas, 120, 22, 36, &label_14, volume);
     } else {
-        /* left-aligned "Connect / RAW HID" prompt — replaces middle band */
-        canvas_draw_text(canvas, 4, 44, 60, &label_16_left, "Connect");
-        canvas_draw_text(canvas, 4, 64, 60, &label_16_left, "RAW HID");
+        /* Smaller two-line "Connect / RAW HID" prompt — left-aligned. */
+        canvas_draw_text(canvas, 4, 18, 156, &label_14, "Connect");
+        canvas_draw_text(canvas, 4, 34, 156, &label_14, "RAW HID");
     }
 #else
     ARG_UNUSED(label_18);
-    ARG_UNUSED(label_16_left);
-    ARG_UNUSED(label_14_left);
+    ARG_UNUSED(label_14);
 #endif
 
-    /* profile section */
-    canvas_draw_text(canvas, 4, 101, 60, &label_14_left, "Profile");
+    /* Row 3: 5 profile dots (left) + layer label (right) */
     static const lv_coord_t profile_x[NICE_VIEW_HID_PROFILE_COUNT] = {4, 16, 28, 40, 52};
     for (uint8_t i = 0; i < NICE_VIEW_HID_PROFILE_COUNT; i++) {
-        draw_profile_dot(canvas, profile_x[i], 113, i, state);
+        draw_profile_dot(canvas, profile_x[i], 50, i, state);
     }
 
-    /* layer section */
-    canvas_draw_text(canvas, 4, 133, 60, &label_14_left, "Layer");
+    char layer[24] = {};
     if (state->layer_label == NULL || strlen(state->layer_label) == 0) {
-        char text[12] = {};
-        snprintf(text, sizeof(text), "Base %u", state->layer_index);
-        canvas_draw_text(canvas, 4, 143, 60, &label_16_left, text);
+        snprintf(layer, sizeof(layer), "Layer: %u", state->layer_index);
     } else {
-        canvas_draw_text(canvas, 4, 143, 60, &label_16_left, state->layer_label);
+        snprintf(layer, sizeof(layer), "Layer: %s", state->layer_label);
     }
+    canvas_draw_text(canvas, 70, 51, 86, &label_14, layer);
 
-    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
     lv_obj_invalidate(widget->screen_canvas);
 }
 
@@ -405,7 +401,7 @@ static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
-        /* central does not draw media — just keep state in sync. */
+        /* central does not draw media — peripheral handles that. */
     }
 }
 
@@ -440,28 +436,18 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_set_style_pad_all(widget->obj, 0, 0);
     memset(&widget->state, 0, sizeof(widget->state));
 
-    /* offscreen drawing canvas (68x160 portrait) */
-    widget->portrait_canvas = lv_canvas_create(widget->obj);
-    lv_obj_set_pos(widget->portrait_canvas, -NICE_VIEW_HID_PORTRAIT_WIDTH - 1, 0);
-    lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
-                         NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
-                         CANVAS_COLOR_FORMAT);
-
-    /* visible canvas (160x68) — receives the rotated buffer */
     widget->screen_canvas = lv_canvas_create(widget->obj);
     lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_canvas_set_buffer(widget->screen_canvas, widget->screen_cbuf, NICE_VIEW_HID_SCREEN_WIDTH,
                          NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
 
     /*
-     * Paint a clean background up-front so we don't show partial state.
-     * The widget_*_init() calls below each schedule an initial state fetch
-     * that triggers draw_status(); ordering them after a clean canvas
-     * means the first fully-populated draw is what the user sees, instead
-     * of icons appearing before text labels.
+     * Paint the background up-front so the user doesn't see partial state.
+     * The widget_*_init() calls below schedule initial state fetches that
+     * each trigger draw_status() with real data — that's the first frame
+     * the user sees.
      */
-    fill_canvas(widget->portrait_canvas);
-    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
+    fill_canvas(widget->screen_canvas);
     lv_obj_invalidate(widget->screen_canvas);
 
     sys_slist_append(&widgets, &widget->node);
