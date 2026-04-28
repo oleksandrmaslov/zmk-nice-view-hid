@@ -23,11 +23,29 @@ typedef enum {
     _LAYOUT = 0xAC,
     _MEDIA_ARTIST = 0xAD,
     _MEDIA_TITLE = 0xAE,
+    /*
+     * Continuation packets append to the previously started media text. The
+     * firmware accepts as many continuations as fit into
+     * NICE_VIEW_HID_TEXT_MAX_LEN; remaining bytes are dropped with a log
+     * warning. Companion apps that don't know about continuations just send
+     * a single _MEDIA_TITLE / _MEDIA_ARTIST packet capped at the per-packet
+     * limit (see hid.h for the full packet size discussion).
+     */
+    _MEDIA_ARTIST_CONT = 0xAF,
+    _MEDIA_TITLE_CONT = 0xB0,
 } hid_data_type;
 
 #define HID_MAX_TEXT_LEN NICE_VIEW_HID_TEXT_MAX_LEN
 
 static bool is_connected = false;
+
+/*
+ * Reassembly buffers for the chunked media text protocol. A new
+ * _MEDIA_TITLE / _MEDIA_ARTIST packet always resets the corresponding
+ * buffer; _MEDIA_*_CONT packets append.
+ */
+static char artist_buffer[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
+static char title_buffer[NICE_VIEW_HID_TEXT_MAX_LEN + 1];
 
 static void on_disconnect_timer(struct k_timer *dummy) {
     LOG_INF("raise_connection_notification: false");
@@ -51,7 +69,22 @@ static void on_volume_timer(struct k_timer *dummy) {
 
 K_TIMER_DEFINE(volume_timer, on_volume_timer, NULL);
 
-static void handle_media_field(bool is_artist, uint8_t *data, uint8_t length) {
+static void emit_artist(void) {
+    struct media_artist_notification notification = {0};
+    strncpy(notification.value, artist_buffer, NICE_VIEW_HID_TEXT_MAX_LEN);
+    notification.value[NICE_VIEW_HID_TEXT_MAX_LEN] = '\0';
+    raise_media_artist_notification(notification);
+}
+
+static void emit_title(void) {
+    struct media_title_notification notification = {0};
+    strncpy(notification.value, title_buffer, NICE_VIEW_HID_TEXT_MAX_LEN);
+    notification.value[NICE_VIEW_HID_TEXT_MAX_LEN] = '\0';
+    raise_media_title_notification(notification);
+}
+
+static void handle_media_field(bool is_artist, bool is_continuation, uint8_t *data,
+                               uint8_t length) {
     if (length < 2) {
         LOG_WRN("Media packet too short: %u", length);
         return;
@@ -59,27 +92,36 @@ static void handle_media_field(bool is_artist, uint8_t *data, uint8_t length) {
 
     uint8_t declared_len = data[1];
     uint8_t available_len = length > 2 ? length - 2 : 0;
-    uint8_t copy_len =
-        MIN(declared_len, MIN(available_len, (uint8_t)HID_MAX_TEXT_LEN));
+    uint8_t copy_len = MIN(declared_len, available_len);
 
-    if (copy_len == 0) {
-        LOG_WRN("Received empty media value, declared=%u available=%u", declared_len,
-                available_len);
+    char *buf = is_artist ? artist_buffer : title_buffer;
+
+    if (!is_continuation) {
+        memset(buf, 0, NICE_VIEW_HID_TEXT_MAX_LEN + 1);
+    }
+
+    size_t current = strlen(buf);
+    if (current >= NICE_VIEW_HID_TEXT_MAX_LEN) {
+        LOG_WRN("Media buffer full, dropping continuation chunk");
         return;
     }
 
-    if (declared_len > copy_len) {
-        LOG_WRN("Truncating media value from %u to %u bytes", declared_len, copy_len);
+    size_t remaining = NICE_VIEW_HID_TEXT_MAX_LEN - current;
+    size_t append_len = MIN((size_t)copy_len, remaining);
+
+    if (append_len > 0) {
+        memcpy(buf + current, data + 2, append_len);
+        buf[current + append_len] = '\0';
+    }
+
+    if (declared_len > append_len) {
+        LOG_WRN("Media chunk truncated: declared=%u accepted=%zu", declared_len, append_len);
     }
 
     if (is_artist) {
-        struct media_artist_notification notification = {0};
-        memcpy(notification.value, data + 2, copy_len);
-        raise_media_artist_notification(notification);
+        emit_artist();
     } else {
-        struct media_title_notification notification = {0};
-        memcpy(notification.value, data + 2, copy_len);
-        raise_media_title_notification(notification);
+        emit_title();
     }
 }
 
@@ -133,10 +175,16 @@ static void process_raw_hid_data(uint8_t *data, uint8_t length) {
         break;
 #endif
     case _MEDIA_ARTIST:
-        handle_media_field(true, data, length);
+        handle_media_field(true, false, data, length);
         break;
     case _MEDIA_TITLE:
-        handle_media_field(false, data, length);
+        handle_media_field(false, false, data, length);
+        break;
+    case _MEDIA_ARTIST_CONT:
+        handle_media_field(true, true, data, length);
+        break;
+    case _MEDIA_TITLE_CONT:
+        handle_media_field(false, true, data, length);
         break;
     }
 }
