@@ -266,6 +266,11 @@ void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
     draw_horizontal_battery_at(canvas, 4, 4, state->battery, state->charging);
 }
 
+void draw_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                     const struct status_state *state) {
+    draw_horizontal_battery_at(canvas, x, y, state->battery, state->charging);
+}
+
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     lv_draw_image_dsc_t img_dsc;
     lv_draw_image_dsc_init(&img_dsc);

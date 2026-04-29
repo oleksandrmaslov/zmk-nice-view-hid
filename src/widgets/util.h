@@ -69,6 +69,8 @@ struct battery_status_state {
 void rotate_canvas(lv_obj_t *canvas);
 void rotate_portrait_canvas(uint8_t *source_buf, uint8_t *dest_buf);
 void draw_battery(lv_obj_t *canvas, const struct status_state *state);
+void draw_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
+                     const struct status_state *state);
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_bluetooth_logo_outlined(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);
 void draw_elemental_bluetooth_searching(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y);

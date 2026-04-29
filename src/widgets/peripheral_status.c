@@ -3,6 +3,21 @@
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
+ * Layout taken from references/Peripheral.svg. Drawn onto a 68×160 portrait
+ * staging canvas using SVG-matching coordinates, then rotated 270° into the
+ * 160×68 landscape framebuffer the panel scans out — same pipeline as the
+ * central status widget.
+ *
+ *   y=  ┌───────────────────────────────────────────────┐
+ *    0  │ [BAT 24×12]                          [BT]    │   status bar
+ *   23  │  Queen      Bohemian Rhapsody     ▶ Playing  │  vertical music
+ *  175  │   ↓           ↓                       ↓      │  labels
+ *  187  └───────────────────────────────────────────────┘
+ *
+ * The three music labels (artist, title, "Playing" status word) are drawn
+ * with `canvas_draw_rotated_text` at 90° so they read top-to-bottom inside
+ * the portrait body — matching the SVG mock. Long titles get truncated to
+ * what fits in the available vertical space (≈140 px).
  */
 
 #include <zephyr/kernel.h>
@@ -23,25 +38,27 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
-/*
- * Peripheral layout — flat horizontal on the 160×68 display:
- *
- *   y=  ┌─────────────────────────────────────────────────────────────┐
- *    0  │ [BAT 33×12]                                       [BT]      │
- *   16  ├─────────────────────────────────────────────────────────────┤
- *   22  │ Bohemian Rhapsody                          (marquee 18-px)  │
- *   42  │ Queen                                      (marquee 14-px)  │
- *       └─────────────────────────────────────────────────────────────┘
- *
- * Long titles scroll character-by-character. Battery rendering, marquee
- * pacing, and battery-aware pause are all in util.c / Kconfig.
- */
+#define PX_BAT_X            4
+#define PX_BAT_Y            6
+#define PX_BT_X             52
+#define PX_BT_Y             3
 
-#define MEDIA_TEXT_X 4
-#define MEDIA_TEXT_RIGHT 156
-#define MEDIA_AXIAL_LENGTH (MEDIA_TEXT_RIGHT - MEDIA_TEXT_X)
-#define MEDIA_TITLE_Y 20
-#define MEDIA_ARTIST_Y 44
+/*
+ * Music label columns in portrait coords. Each label is rendered as
+ * rotated text starting from (column_x, START_Y) and growing downward.
+ *   - artist column at x=4..14
+ *   - title  column at x=20..36 (wider, larger font)
+ *   - status column at x=52..62 (with a small play triangle on top)
+ */
+#define MUSIC_TOP_Y         28
+#define MUSIC_BOTTOM_Y      155
+#define MUSIC_LENGTH        (MUSIC_BOTTOM_Y - MUSIC_TOP_Y)
+
+#define ARTIST_X            4
+#define TITLE_X             24
+#define STATUS_X            58
+#define PLAY_TRIANGLE_X     54
+#define PLAY_TRIANGLE_Y     30
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -58,36 +75,29 @@ static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
-static void draw_header(lv_obj_t *canvas, const struct status_state *state) {
-    draw_battery(canvas, state);
+static void draw_status_bar(lv_obj_t *canvas, const struct status_state *state) {
+    draw_battery_at(canvas, PX_BAT_X, PX_BAT_Y, state);
 
     if (state->connected) {
-        draw_elemental_bluetooth_logo(canvas, 146, 0);
+        draw_elemental_bluetooth_logo(canvas, PX_BT_X, PX_BT_Y);
     } else {
-        draw_elemental_bluetooth_logo_outlined(canvas, 146, 0);
+        draw_elemental_bluetooth_logo_outlined(canvas, PX_BT_X, PX_BT_Y);
     }
 }
 
-static const char *fallback_title(const struct status_state *state) {
 #if IS_ENABLED(CONFIG_RAW_HID)
+static const char *fallback_title(const struct status_state *state) {
     if (!state->connected) return "Waiting link";
     if (!state->is_connected) return "Connect RAW HID";
     return state->media_title[0] ? state->media_title : "Now playing";
-#else
-    return state->connected ? "Connected" : "Disconnected";
-#endif
 }
 
 static const char *fallback_artist(const struct status_state *state) {
-#if IS_ENABLED(CONFIG_RAW_HID)
     if (!state->connected) return "Split offline";
     if (!state->is_connected) return "Waiting host";
     return state->media_artist[0] ? state->media_artist : "";
-#else
-    ARG_UNUSED(state);
-    return "";
-#endif
 }
+#endif
 
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
 static size_t utf8_char_advance(const char *s) {
@@ -135,64 +145,88 @@ static bool scroll_allowed(const struct status_state *state) {
 }
 
 /*
- * Draw a horizontal text label at (x, y) using the given font, applying a
- * character-window marquee when the text is wider than the available area.
- * No rotation — text reads naturally left-to-right.
+ * Draw a vertical (rotated 90°) text label running from (x, MUSIC_TOP_Y)
+ * downward. Long text scrolls character-by-character along the same axis,
+ * matching the marquee used in the previous landscape layout.
  */
-static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t max_w,
-                              const lv_font_t *font, lv_color_t color, const char *txt,
-                              uint16_t step, bool may_scroll) {
+static void draw_vertical_music_label(lv_obj_t *canvas, lv_coord_t x, const lv_font_t *font,
+                                      const char *txt, uint16_t step, bool may_scroll) {
     lv_draw_label_dsc_t dsc;
-    init_label_dsc(&dsc, color, font, LV_TEXT_ALIGN_LEFT);
-    dsc.flag |= LV_TEXT_FLAG_EXPAND; /* belt-and-braces: never wrap */
+    init_label_dsc(&dsc, LVGL_FOREGROUND, font, LV_TEXT_ALIGN_LEFT);
+    dsc.flag |= LV_TEXT_FLAG_EXPAND;
 
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
     lv_coord_t full_w = measure_text_width(txt, font);
-    if (!may_scroll || full_w <= max_w) {
-        canvas_draw_text(canvas, x, y, max_w, &dsc, txt);
+    if (!may_scroll || full_w <= MUSIC_LENGTH) {
+        canvas_draw_rotated_text(canvas, x, MUSIC_TOP_Y, MUSIC_LENGTH, 900, &dsc, txt);
         return;
     }
 
     size_t total_chars = utf8_strlen(txt);
-    /*
-     * Pause briefly at the start (steps 0..2) then advance the window one
-     * character per tick. After the whole title has scrolled past, hold
-     * empty for 3 ticks and restart. CHAR-LEVEL is intentionally cheap on
-     * battery — see CONFIG_NICE_VIEW_HID_MEDIA_SCROLL_INTERVAL_MS.
-     */
     size_t cycle = total_chars + 6;
     size_t phase = step % cycle;
     size_t skip = (phase < 3) ? 0 : (phase - 3);
     if (skip > total_chars) skip = total_chars;
 
     const char *windowed = utf8_advance_chars(txt, skip);
-    canvas_draw_text(canvas, x, y, max_w, &dsc, windowed);
+    canvas_draw_rotated_text(canvas, x, MUSIC_TOP_Y, MUSIC_LENGTH, 900, &dsc, windowed);
 #else
     ARG_UNUSED(step);
     ARG_UNUSED(may_scroll);
-    canvas_draw_text(canvas, x, y, max_w, &dsc, txt);
+    canvas_draw_rotated_text(canvas, x, MUSIC_TOP_Y, MUSIC_LENGTH, 900, &dsc, txt);
 #endif
 }
 
-static void draw_media(lv_obj_t *canvas, const struct status_state *state, uint16_t step) {
+/* Small play-triangle pointer drawn at the top of the status column. */
+static void draw_play_triangle(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
+    lv_draw_rect_dsc_t fg;
+    init_rect_dsc(&fg, LVGL_FOREGROUND);
+    /* 7×6 right-pointing triangle, drawn as horizontal slices */
+    canvas_draw_rect(canvas, x, y, 7, 1, &fg);
+    canvas_draw_rect(canvas, x + 1, y + 1, 5, 1, &fg);
+    canvas_draw_rect(canvas, x + 2, y + 2, 3, 1, &fg);
+    canvas_draw_rect(canvas, x + 3, y + 3, 1, 1, &fg);
+}
+
+static void draw_music(lv_obj_t *canvas, const struct status_state *state, uint16_t step) {
+#if IS_ENABLED(CONFIG_RAW_HID)
     const char *title = fallback_title(state);
     const char *artist = fallback_artist(state);
     bool may_scroll = scroll_allowed(state);
 
-    draw_marquee_text(canvas, MEDIA_TEXT_X, MEDIA_TITLE_Y, MEDIA_AXIAL_LENGTH,
-                      &lv_font_montserrat_18, LVGL_FOREGROUND, title, step, may_scroll);
-    draw_marquee_text(canvas, MEDIA_TEXT_X, MEDIA_ARTIST_Y, MEDIA_AXIAL_LENGTH,
-                      &lv_font_montserrat_14, LVGL_FOREGROUND, artist, step, may_scroll);
+    /* Artist column (small) on the left. */
+    if (artist[0]) {
+        draw_vertical_music_label(canvas, ARTIST_X, &lv_font_montserrat_14, artist, step,
+                                  may_scroll);
+    }
+    /* Title column (large) in the middle. */
+    draw_vertical_music_label(canvas, TITLE_X, &lv_font_montserrat_18, title, step, may_scroll);
+
+    /* Status column on the right: play triangle + "Playing" label. */
+    if (state->connected && state->is_connected) {
+        draw_play_triangle(canvas, PLAY_TRIANGLE_X, PLAY_TRIANGLE_Y);
+        lv_draw_label_dsc_t dsc;
+        init_label_dsc(&dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
+        canvas_draw_rotated_text(canvas, STATUS_X, MUSIC_TOP_Y + 12, MUSIC_LENGTH - 12, 900, &dsc,
+                                 "Playing");
+    }
+#else
+    ARG_UNUSED(canvas);
+    ARG_UNUSED(state);
+    ARG_UNUSED(step);
+#endif
 }
 
 static void redraw_widget(struct zmk_widget_status *widget) {
-    fill_canvas(widget->screen_canvas);
-    draw_header(widget->screen_canvas, &widget->state);
+    fill_canvas(widget->portrait_canvas);
+    draw_status_bar(widget->portrait_canvas, &widget->state);
 #if IS_ENABLED(CONFIG_RAW_HID) && IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
-    draw_media(widget->screen_canvas, &widget->state, media_scroll_step);
+    draw_music(widget->portrait_canvas, &widget->state, media_scroll_step);
 #else
-    draw_media(widget->screen_canvas, &widget->state, 0);
+    draw_music(widget->portrait_canvas, &widget->state, 0);
 #endif
+
+    rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
     lv_obj_invalidate(widget->screen_canvas);
 }
 
@@ -203,12 +237,10 @@ static bool any_widget_needs_scroll(void) {
         if (!w->state.connected || !w->state.is_connected) continue;
         if (!scroll_allowed(&w->state)) continue;
         if (w->state.media_title[0] == '\0' && w->state.media_artist[0] == '\0') continue;
-        lv_coord_t t = measure_text_width(
-            w->state.media_title[0] ? w->state.media_title : "Now playing",
-            &lv_font_montserrat_18);
-        lv_coord_t a = measure_text_width(
-            w->state.media_artist[0] ? w->state.media_artist : " ", &lv_font_montserrat_14);
-        if (t > MEDIA_AXIAL_LENGTH || a > MEDIA_AXIAL_LENGTH) return true;
+        const char *t = w->state.media_title[0] ? w->state.media_title : "Now playing";
+        const char *a = w->state.media_artist[0] ? w->state.media_artist : " ";
+        if (measure_text_width(t, &lv_font_montserrat_18) > MUSIC_LENGTH) return true;
+        if (measure_text_width(a, &lv_font_montserrat_14) > MUSIC_LENGTH) return true;
     }
     return false;
 }
@@ -363,6 +395,12 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_canvas_set_buffer(widget->screen_canvas, widget->screen_cbuf, NICE_VIEW_HID_SCREEN_WIDTH,
                          NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
+
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
+                         NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
+                         CANVAS_COLOR_FORMAT);
+    lv_obj_add_flag(widget->portrait_canvas, LV_OBJ_FLAG_HIDDEN);
 
     fill_canvas(widget->screen_canvas);
     lv_obj_invalidate(widget->screen_canvas);
