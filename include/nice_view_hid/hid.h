@@ -2,9 +2,9 @@
 
 #include <zmk/event_manager.h>
 
-#ifdef CONFIG_RAW_HID
+#define NICE_VIEW_HID_TEXT_MAX_LEN 96
 
-#define NICE_VIEW_HID_TEXT_MAX_LEN 30
+#ifdef CONFIG_RAW_HID
 
 struct is_connected_notification {
     bool value;

@@ -4,13 +4,17 @@
 config NICE_VIEW_HID
     bool "Enable nice!view display with Raw HID"
     imply ZMK_DISPLAY
-    select LV_USE_IMG
+    select LV_USE_IMAGE
     select LV_USE_CANVAS
+    select LV_USE_MATRIX
+    select LV_DRAW_TRANSFORM_USE_MATRIX
+    select LV_FONT_MONTSERRAT_14
+    select LV_FONT_MONTSERRAT_16
     select LV_FONT_MONTSERRAT_18
-    select LV_FONT_MONTSERRAT_22
+    select LV_FONT_MONTSERRAT_20
 
 config NICE_VIEW_HID_TWO_PROFILES
-    bool "Limit displayed profiles to two"
+    bool "Deprecated: two-profile display mode"
 
 config NICE_VIEW_HID_SHOW_LAYOUT
     bool "Show layout"
@@ -19,6 +23,10 @@ config NICE_VIEW_HID_SHOW_LAYOUT
 config NICE_VIEW_HID_LAYOUTS
     string "Comma-separated layout list"
     default "EN"
+
+config NICE_VIEW_HID_MEDIA_SCROLL
+    bool "Scroll longer media text"
+    default y
 
 config NICE_VIEW_HID_INVERTED
     bool "Invert widget colors"
