@@ -57,28 +57,29 @@ static void handle_media_field(bool is_artist, uint8_t *data, uint8_t length) {
         return;
     }
 
-    uint8_t declared_len = data[1];
-    uint8_t available_len = length > 2 ? length - 2 : 0;
-    uint8_t copy_len =
-        MIN(declared_len, MIN(available_len, (uint8_t)HID_MAX_TEXT_LEN));
+    size_t declared_len = data[1];
+    size_t available_len = length > 2 ? length - 2 : 0;
+    size_t copy_len = MIN(declared_len, MIN(available_len, (size_t)HID_MAX_TEXT_LEN));
 
     if (copy_len == 0) {
-        LOG_WRN("Received empty media value, declared=%u available=%u", declared_len,
+        LOG_WRN("Received empty media value, declared=%zu available=%zu", declared_len,
                 available_len);
         return;
     }
 
     if (declared_len > copy_len) {
-        LOG_WRN("Truncating media value from %u to %u bytes", declared_len, copy_len);
+        LOG_WRN("Truncating media value from %zu to %zu bytes", declared_len, copy_len);
     }
 
     if (is_artist) {
         struct media_artist_notification notification = {0};
         memcpy(notification.value, data + 2, copy_len);
+        notification.value[copy_len] = '\0';
         raise_media_artist_notification(notification);
     } else {
         struct media_title_notification notification = {0};
         memcpy(notification.value, data + 2, copy_len);
+        notification.value[copy_len] = '\0';
         raise_media_title_notification(notification);
     }
 }
