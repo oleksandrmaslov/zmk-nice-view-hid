@@ -19,47 +19,34 @@ static void init_rect_dsc(lv_draw_rect_dsc_t *rect_dsc, lv_color_t color) {
     rect_dsc->radius = 0;
 }
 
-static void map_portrait_rect(lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h,
-                              lv_area_t *coords) {
-    coords->x1 = NICE_VIEW_HID_PORTRAIT_HEIGHT - y - h;
-    coords->y1 = x;
-    coords->x2 = coords->x1 + h - 1;
-    coords->y2 = coords->y1 + w - 1;
-}
-
-static void canvas_draw_mapped_rect(lv_obj_t *canvas, const lv_area_t *coords,
-                                    lv_draw_rect_dsc_t *draw_dsc) {
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    lv_draw_rect(&layer, draw_dsc, coords);
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-static void canvas_draw_portrait_rect(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
-                                      lv_coord_t w, lv_coord_t h,
-                                      lv_draw_rect_dsc_t *draw_dsc) {
+static void canvas_draw_rect(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t w,
+                             lv_coord_t h, lv_draw_rect_dsc_t *draw_dsc) {
     if (w <= 0 || h <= 0) {
         return;
     }
 
-    lv_area_t coords;
-    map_portrait_rect(x, y, w, h, &coords);
-    canvas_draw_mapped_rect(canvas, &coords, draw_dsc);
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+
+    lv_area_t coords = {x, y, x + w - 1, y + h - 1};
+    lv_draw_rect(&layer, draw_dsc, &coords);
+
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
-static void set_portrait_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color_t color) {
+static void set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color_t color) {
     if (x < 0 || y < 0 || x >= NICE_VIEW_HID_PORTRAIT_WIDTH ||
         y >= NICE_VIEW_HID_PORTRAIT_HEIGHT) {
         return;
     }
 
-    lv_canvas_set_px(canvas, NICE_VIEW_HID_PORTRAIT_HEIGHT - y - 1, x, color, LV_OPA_COVER);
+    lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
 }
 
 static void draw_px_pattern(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
                             const int8_t points[][2], size_t point_count, lv_color_t color) {
     for (size_t i = 0; i < point_count; i++) {
-        set_portrait_px(canvas, x + points[i][0], y + points[i][1], color);
+        set_px(canvas, x + points[i][0], y + points[i][1], color);
     }
 }
 
@@ -72,52 +59,53 @@ void init_root_obj(lv_obj_t *obj) {
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-lv_obj_t *create_portrait_label(lv_obj_t *parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
-                                lv_coord_t h, const lv_font_t *font, lv_text_align_t align,
-                                lv_label_long_mode_t long_mode) {
-    lv_obj_t *label = lv_label_create(parent);
-
-    lv_obj_remove_style_all(label);
-    lv_obj_set_size(label, w, h);
-    lv_obj_set_pos(label, NICE_VIEW_HID_PORTRAIT_HEIGHT - y, x);
-    lv_obj_set_style_text_color(label, LVGL_FOREGROUND, 0);
-    lv_obj_set_style_text_font(label, font, 0);
-    lv_obj_set_style_text_align(label, align, 0);
-    lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_transform_pivot_x(label, 0, 0);
-    lv_obj_set_style_transform_pivot_y(label, 0, 0);
-    lv_obj_set_style_transform_rotation(label, 900, 0);
-    lv_obj_clear_flag(label, LV_OBJ_FLAG_SCROLLABLE);
-    lv_label_set_long_mode(label, long_mode);
-
-    return label;
+void init_canvas_obj(lv_obj_t *canvas, uint8_t *buf, lv_coord_t w, lv_coord_t h) {
+    lv_obj_remove_style_all(canvas);
+    lv_obj_set_size(canvas, w, h);
+    lv_obj_set_pos(canvas, 0, 0);
+    lv_canvas_set_buffer(canvas, buf, w, h, CANVAS_COLOR_FORMAT);
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-void set_label_text_if_changed(lv_obj_t *label, const char *text) {
-    if (label == NULL || text == NULL) {
-        return;
-    }
+void rotate_portrait_canvas(lv_obj_t *portrait_canvas, lv_obj_t *display_canvas) {
+    uint8_t *src = lv_canvas_get_draw_buf(portrait_canvas)->data;
+    uint8_t *dst = lv_canvas_get_draw_buf(display_canvas)->data;
 
-    const char *current = lv_label_get_text(label);
-    if (current == NULL || strcmp(current, text) != 0) {
-        lv_label_set_text(label, text);
-    }
-}
+    const uint32_t src_stride =
+        lv_draw_buf_width_to_stride(NICE_VIEW_HID_PORTRAIT_WIDTH, CANVAS_COLOR_FORMAT);
+    const uint32_t dst_stride =
+        lv_draw_buf_width_to_stride(NICE_VIEW_HID_SCREEN_WIDTH, CANVAS_COLOR_FORMAT);
 
-void set_label_hidden(lv_obj_t *label, bool hidden) {
-    if (label == NULL) {
-        return;
-    }
-
-    if (hidden) {
-        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_draw_sw_rotate(src, dst, NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
+                      src_stride, dst_stride, LV_DISPLAY_ROTATION_270, CANVAS_COLOR_FORMAT);
+    lv_obj_invalidate(display_canvas);
 }
 
 void draw_status_background(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
+}
+
+void draw_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h,
+               const lv_font_t *font, lv_text_align_t align, const char *text) {
+    if (text == NULL || w <= 0 || h <= 0) {
+        return;
+    }
+
+    lv_draw_label_dsc_t label_dsc;
+    lv_draw_label_dsc_init(&label_dsc);
+    label_dsc.color = LVGL_FOREGROUND;
+    label_dsc.font = font;
+    label_dsc.align = align;
+    label_dsc.text = text;
+    label_dsc.flag = LV_TEXT_FLAG_NONE;
+
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+
+    lv_area_t coords = {x, y, x + w - 1, y + h - 1};
+    lv_draw_label(&layer, &label_dsc, &coords);
+
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
 void draw_battery(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
@@ -128,24 +116,24 @@ void draw_battery(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
     init_rect_dsc(&bg, LVGL_BACKGROUND);
 
     /* Pixel recreation of references/Connected.svg group "Battery". */
-    canvas_draw_portrait_rect(canvas, x + 2, y + 0, 19, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 2, y + 10, 19, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 1, y + 1, 1, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 1, y + 9, 1, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 21, y + 1, 1, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 21, y + 9, 1, 1, &fg);
-    canvas_draw_portrait_rect(canvas, x + 0, y + 2, 1, 7, &fg);
-    canvas_draw_portrait_rect(canvas, x + 22, y + 2, 1, 7, &fg);
-    canvas_draw_portrait_rect(canvas, x + 23, y + 4, 1, 3, &fg);
+    canvas_draw_rect(canvas, x + 2, y + 0, 19, 1, &fg);
+    canvas_draw_rect(canvas, x + 2, y + 10, 19, 1, &fg);
+    canvas_draw_rect(canvas, x + 1, y + 1, 1, 1, &fg);
+    canvas_draw_rect(canvas, x + 1, y + 9, 1, 1, &fg);
+    canvas_draw_rect(canvas, x + 21, y + 1, 1, 1, &fg);
+    canvas_draw_rect(canvas, x + 21, y + 9, 1, 1, &fg);
+    canvas_draw_rect(canvas, x + 0, y + 2, 1, 7, &fg);
+    canvas_draw_rect(canvas, x + 22, y + 2, 1, 7, &fg);
+    canvas_draw_rect(canvas, x + 23, y + 4, 1, 3, &fg);
 
     uint8_t level = MIN(state->battery, (uint8_t)100);
     lv_coord_t fill_w = (level * 18 + 99) / 100;
     if (fill_w > 0) {
-        canvas_draw_portrait_rect(canvas, x + 3, y + 2, fill_w, 7, &fg);
+        canvas_draw_rect(canvas, x + 3, y + 2, fill_w, 7, &fg);
     }
 
     if (state->charging) {
-        canvas_draw_portrait_rect(canvas, x + 6, y + 2, 8, 7, &bg);
+        canvas_draw_rect(canvas, x + 6, y + 2, 8, 7, &bg);
         const int8_t bolt[][2] = {{12, 2}, {11, 3}, {10, 4}, {10, 5}, {9, 5},
                                   {12, 5}, {11, 6}, {10, 7}, {9, 8}};
         draw_px_pattern(canvas, x, y, bolt, ARRAY_SIZE(bolt), LVGL_FOREGROUND);
@@ -153,9 +141,6 @@ void draw_battery(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
 }
 
 void draw_ble_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, bool bonded, bool connected) {
-    lv_draw_rect_dsc_t bg;
-    init_rect_dsc(&bg, LVGL_BACKGROUND);
-
     if (!bonded) {
         const int8_t search[][2] = {{5, 0},  {6, 1},  {7, 2},  {8, 3}, {9, 5},
                                     {9, 8},  {8, 10}, {7, 11}, {6, 12}, {5, 13},
@@ -173,9 +158,11 @@ void draw_ble_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, bool bonded, bo
     draw_px_pattern(canvas, x, y, logo, ARRAY_SIZE(logo), LVGL_FOREGROUND);
 
     if (!connected) {
-        canvas_draw_portrait_rect(canvas, x + 1, y + 5, 9, 3, &bg);
+        lv_draw_rect_dsc_t bg;
+        init_rect_dsc(&bg, LVGL_BACKGROUND);
+        canvas_draw_rect(canvas, x + 1, y + 5, 9, 3, &bg);
         for (uint8_t i = 0; i < 5; i++) {
-            set_portrait_px(canvas, x + 1 + i * 2, y + 6, LVGL_FOREGROUND);
+            set_px(canvas, x + 1 + i * 2, y + 6, LVGL_FOREGROUND);
         }
     }
 }
@@ -221,7 +208,7 @@ void draw_volume_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8_t volu
 }
 
 void draw_play_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    /* From Peripheral.svg group "mdi:play", reduced to a 7x6 pixel triangle. */
+    /* From Peripheral.svg group "mdi:play", reduced to a 7x7 pixel triangle. */
     const int8_t play[][2] = {{0, 0}, {0, 1}, {1, 1}, {0, 2}, {1, 2}, {2, 2},
                               {0, 3}, {1, 3}, {2, 3}, {3, 3}, {0, 4}, {1, 4},
                               {2, 4}, {0, 5}, {1, 5}, {0, 6}};
@@ -233,27 +220,23 @@ void draw_profile_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, bool select
     init_rect_dsc(&fg, LVGL_FOREGROUND);
 
     if (selected) {
-        canvas_draw_portrait_rect(canvas, x, y, 10, 10, &fg);
-        set_portrait_px(canvas, x, y, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x + 9, y, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x, y + 9, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x + 9, y + 9, LVGL_BACKGROUND);
+        canvas_draw_rect(canvas, x, y, 10, 10, &fg);
+        set_px(canvas, x, y, LVGL_BACKGROUND);
+        set_px(canvas, x + 9, y, LVGL_BACKGROUND);
+        set_px(canvas, x, y + 9, LVGL_BACKGROUND);
+        set_px(canvas, x + 9, y + 9, LVGL_BACKGROUND);
         return;
     }
 
     if (bonded) {
-        canvas_draw_portrait_rect(canvas, x + 1, y, 8, 1, &fg);
-        canvas_draw_portrait_rect(canvas, x + 1, y + 9, 8, 1, &fg);
-        canvas_draw_portrait_rect(canvas, x, y + 1, 1, 8, &fg);
-        canvas_draw_portrait_rect(canvas, x + 9, y + 1, 1, 8, &fg);
-        set_portrait_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-        set_portrait_px(canvas, x + 8, y + 1, LVGL_FOREGROUND);
-        set_portrait_px(canvas, x + 1, y + 8, LVGL_FOREGROUND);
-        set_portrait_px(canvas, x + 8, y + 8, LVGL_FOREGROUND);
-        set_portrait_px(canvas, x, y, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x + 9, y, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x, y + 9, LVGL_BACKGROUND);
-        set_portrait_px(canvas, x + 9, y + 9, LVGL_BACKGROUND);
+        canvas_draw_rect(canvas, x + 1, y, 8, 1, &fg);
+        canvas_draw_rect(canvas, x + 1, y + 9, 8, 1, &fg);
+        canvas_draw_rect(canvas, x, y + 1, 1, 8, &fg);
+        canvas_draw_rect(canvas, x + 9, y + 1, 1, 8, &fg);
+        set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
+        set_px(canvas, x + 8, y + 1, LVGL_FOREGROUND);
+        set_px(canvas, x + 1, y + 8, LVGL_FOREGROUND);
+        set_px(canvas, x + 8, y + 8, LVGL_FOREGROUND);
         return;
     }
 

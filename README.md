@@ -13,7 +13,7 @@ Differences with default nice!view widget:
 - WPM graph is removed
 - active profile is displayed as one of five profile icons
 - RAW HID not-ready state shows a `Connect RAW HID` fallback
-- media title and artist labels support longer text and scroll when needed
+- media title and artist buffers support longer text
 
 ## Installation
 
@@ -62,7 +62,7 @@ include:
 | `CONFIG_NICE_VIEW_HID_TWO_PROFILES` | Deprecated compatibility option             | n       |
 | `CONFIG_NICE_VIEW_HID_SHOW_LAYOUT`  | Show current layout                         | y       |
 | `CONFIG_NICE_VIEW_HID_LAYOUTS`      | Comma-separated list of layouts             | EN      |
-| `CONFIG_NICE_VIEW_HID_MEDIA_SCROLL` | Circular-scroll longer media text           | y       |
+| `CONFIG_NICE_VIEW_HID_MEDIA_SCROLL` | Reserved compatibility option               | y       |
 | `CONFIG_NICE_VIEW_HID_INVERTED`     | Invert widget colors                        | n       |
 
 ## UI references
@@ -85,11 +85,11 @@ The code uses the SVG groups and IDs as the layout source of truth:
 - `Connect` and `RAW HID` for the RAW HID fallback state
 - `mdi:play`, `Playing`, title, and artist text groups for the peripheral media state
 
-No generated C image assets are currently used. The simple monochrome SVG shapes are
-recreated with LVGL canvas pixels/rectangles and rotated labels so the firmware keeps the
-68x160 portrait layout on nice!view's 160x68 framebuffer. To regenerate assets in a future
-image-based version, convert the SVG groups above to LVGL 9 image descriptors and replace
-the matching drawing helpers in `src/widgets/util.c`.
+No generated C image assets are currently used. The simple monochrome SVG shapes and text are
+recreated on an off-screen 68x160 LVGL canvas, then the canvas buffer is rotated into the
+visible 160x68 nice!view framebuffer. To regenerate assets in a future image-based version,
+convert the SVG groups above to LVGL 9 image descriptors and replace the matching drawing
+helpers in `src/widgets/util.c`.
 
 ## Media text limits
 

@@ -14,18 +14,10 @@
 struct zmk_widget_status {
     sys_snode_t node;
     lv_obj_t *obj;
-    lv_obj_t *canvas;
-    lv_obj_t *time_label;
-    lv_obj_t *title_label;
-    lv_obj_t *artist_label;
-    lv_obj_t *layout_label;
-    lv_obj_t *volume_label;
-    lv_obj_t *profile_label;
-    lv_obj_t *layer_heading_label;
-    lv_obj_t *layer_label;
-    lv_obj_t *fallback_connect_label;
-    lv_obj_t *fallback_raw_hid_label;
-    uint8_t canvas_buf[CANVAS_BUF_SIZE];
+    lv_obj_t *display_canvas;
+    lv_obj_t *portrait_canvas;
+    uint8_t display_buf[CANVAS_BUF_SIZE];
+    uint8_t portrait_buf[PORTRAIT_CANVAS_BUF_SIZE];
     struct status_state state;
 };
 

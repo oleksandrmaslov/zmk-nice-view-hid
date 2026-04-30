@@ -71,6 +71,8 @@ static void draw_connection_icon(lv_obj_t *canvas, const struct status_state *st
 }
 
 static void draw_profiles(lv_obj_t *canvas, const struct status_state *state) {
+    draw_text(canvas, 4, 99, 60, 11, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER, "Profile");
+
     for (uint8_t i = 0; i < NICE_VIEW_HID_PROFILE_COUNT; i++) {
         const bool selected = i == state->active_profile_index;
         const bool bonded = state->profiles_bonded[i];
@@ -78,77 +80,63 @@ static void draw_profiles(lv_obj_t *canvas, const struct status_state *state) {
     }
 }
 
-static void draw_status_canvas(struct zmk_widget_status *widget) {
-    draw_status_background(widget->canvas);
-    draw_battery(widget->canvas, 4, 6, &widget->state);
-    draw_connection_icon(widget->canvas, &widget->state);
-
-    if (raw_hid_ready(&widget->state)) {
-        draw_play_icon(widget->canvas, 56, 47);
-        draw_language_icon(widget->canvas, 5, 73);
-        draw_volume_icon(widget->canvas, 5, 87, widget->state.volume);
-    }
-
-    draw_profiles(widget->canvas, &widget->state);
-}
-
-static void update_layer_labels(struct zmk_widget_status *widget) {
+static void draw_layer(lv_obj_t *canvas, const struct status_state *state) {
     char layer[16];
 
-    if (widget->state.layer_label != NULL && widget->state.layer_label[0] != '\0') {
-        snprintf(layer, sizeof(layer), "%s", widget->state.layer_label);
-    } else if (widget->state.layer_index == 0) {
+    if (state->layer_label != NULL && state->layer_label[0] != '\0') {
+        snprintf(layer, sizeof(layer), "%s", state->layer_label);
+    } else if (state->layer_index == 0) {
         snprintf(layer, sizeof(layer), "Base");
     } else {
-        snprintf(layer, sizeof(layer), "Layer %u", widget->state.layer_index);
+        snprintf(layer, sizeof(layer), "Layer %u", state->layer_index);
     }
 
-    set_label_text_if_changed(widget->profile_label, "Profile");
-    set_label_text_if_changed(widget->layer_heading_label, "Layer");
-    set_label_text_if_changed(widget->layer_label, layer);
+    draw_text(canvas, 4, 130, 60, 11, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER, "Layer");
+    draw_text(canvas, 4, 143, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER, layer);
 }
 
-static void update_raw_hid_labels(struct zmk_widget_status *widget) {
-    const bool ready = raw_hid_ready(&widget->state);
-
-    set_label_hidden(widget->fallback_connect_label, ready);
-    set_label_hidden(widget->fallback_raw_hid_label, ready);
-    set_label_hidden(widget->time_label, !ready);
-    set_label_hidden(widget->title_label, !ready);
-    set_label_hidden(widget->artist_label, !ready);
-    set_label_hidden(widget->layout_label, !ready);
-    set_label_hidden(widget->volume_label, !ready);
-
-    if (!ready) {
-        set_label_text_if_changed(widget->fallback_connect_label, "Connect");
-        set_label_text_if_changed(widget->fallback_raw_hid_label, "RAW HID");
+static void draw_raw_hid_area(lv_obj_t *canvas, const struct status_state *state) {
+    if (!raw_hid_ready(state)) {
+        draw_text(canvas, 4, 34, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+                  "Connect");
+        draw_text(canvas, 4, 51, 60, 24, &lv_font_montserrat_20, LV_TEXT_ALIGN_CENTER,
+                  "RAW HID");
         return;
     }
 
     char time[8];
-    snprintf(time, sizeof(time), "%02u:%02u", widget->state.hour, widget->state.minute);
-    set_label_text_if_changed(widget->time_label, time);
+    snprintf(time, sizeof(time), "%02u:%02u", state->hour, state->minute);
+    draw_text(canvas, 4, 25, 60, 18, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER, time);
 
-    set_label_text_if_changed(widget->title_label,
-                              widget->state.media_title[0] != '\0' ? widget->state.media_title
-                                                                    : "No title");
-    set_label_text_if_changed(widget->artist_label,
-                              widget->state.media_artist[0] != '\0' ? widget->state.media_artist
-                                                                     : "No artist");
+    draw_text(canvas, 4, 45, 60, 13, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+              state->media_title[0] != '\0' ? state->media_title : "No title");
+    draw_text(canvas, 4, 58, 60, 12, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+              state->media_artist[0] != '\0' ? state->media_artist : "No artist");
+
+    draw_play_icon(canvas, 56, 47);
+    draw_language_icon(canvas, 5, 73);
+    draw_volume_icon(canvas, 5, 87, state->volume);
 
     char layout[12];
-    format_layout_label(widget->state.layout, layout, sizeof(layout));
-    set_label_text_if_changed(widget->layout_label, layout);
+    format_layout_label(state->layout, layout, sizeof(layout));
+    draw_text(canvas, 20, 73, 43, 11, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT, layout);
 
     char volume[8];
-    snprintf(volume, sizeof(volume), "%u%%", widget->state.volume);
-    set_label_text_if_changed(widget->volume_label, volume);
+    snprintf(volume, sizeof(volume), "%u%%", state->volume);
+    draw_text(canvas, 20, 87, 43, 11, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT, volume);
 }
 
 static void refresh_widget(struct zmk_widget_status *widget) {
-    draw_status_canvas(widget);
-    update_layer_labels(widget);
-    update_raw_hid_labels(widget);
+    lv_obj_t *canvas = widget->portrait_canvas;
+
+    draw_status_background(canvas);
+    draw_battery(canvas, 4, 6, &widget->state);
+    draw_connection_icon(canvas, &widget->state);
+    draw_raw_hid_area(canvas, &widget->state);
+    draw_profiles(canvas, &widget->state);
+    draw_layer(canvas, &widget->state);
+
+    rotate_portrait_canvas(widget->portrait_canvas, widget->display_canvas);
 }
 
 static void set_battery_status(struct zmk_widget_status *widget,
@@ -295,7 +283,7 @@ static void time_update_cb(struct time_notification time) {
         widget->state.hour = time.hour;
         widget->state.minute = time.minute;
 
-        update_raw_hid_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -337,7 +325,7 @@ static void layout_update_cb(struct layout_notification layout) {
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         widget->state.layout = layout.value;
 
-        update_raw_hid_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -358,7 +346,7 @@ static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
-        update_raw_hid_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -378,7 +366,7 @@ static void media_artist_update_cb(struct media_artist_notification artist) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_artist, artist.value);
-        update_raw_hid_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -388,52 +376,15 @@ ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
 #endif
 
-static void init_canvas(struct zmk_widget_status *widget) {
-    widget->canvas = lv_canvas_create(widget->obj);
-    lv_obj_remove_style_all(widget->canvas);
-    lv_obj_set_size(widget->canvas, NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT);
-    lv_obj_set_pos(widget->canvas, 0, 0);
-    lv_canvas_set_buffer(widget->canvas, widget->canvas_buf, NICE_VIEW_HID_SCREEN_WIDTH,
-                         NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
-    lv_obj_move_to_index(widget->canvas, 0);
-}
+static void init_canvases(struct zmk_widget_status *widget) {
+    widget->display_canvas = lv_canvas_create(widget->obj);
+    init_canvas_obj(widget->display_canvas, widget->display_buf, NICE_VIEW_HID_SCREEN_WIDTH,
+                    NICE_VIEW_HID_SCREEN_HEIGHT);
 
-static void init_labels(struct zmk_widget_status *widget) {
-    lv_label_long_mode_t media_long_mode =
-        IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL) ? LV_LABEL_LONG_MODE_SCROLL_CIRCULAR
-                                                      : LV_LABEL_LONG_MODE_CLIP;
-
-    widget->fallback_connect_label = create_portrait_label(
-        widget->obj, 4, 34, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-        LV_LABEL_LONG_MODE_CLIP);
-    widget->fallback_raw_hid_label = create_portrait_label(
-        widget->obj, 4, 51, 60, 24, &lv_font_montserrat_20, LV_TEXT_ALIGN_CENTER,
-        LV_LABEL_LONG_MODE_CLIP);
-
-    widget->time_label = create_portrait_label(widget->obj, 4, 25, 60, 18,
-                                               &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER,
-                                               LV_LABEL_LONG_MODE_CLIP);
-    widget->title_label = create_portrait_label(widget->obj, 4, 45, 60, 13,
-                                                &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                media_long_mode);
-    widget->artist_label = create_portrait_label(widget->obj, 4, 58, 60, 12,
-                                                 &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                 media_long_mode);
-    widget->layout_label = create_portrait_label(widget->obj, 20, 73, 43, 11,
-                                                 &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT,
-                                                 LV_LABEL_LONG_MODE_CLIP);
-    widget->volume_label = create_portrait_label(widget->obj, 20, 87, 43, 11,
-                                                 &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT,
-                                                 LV_LABEL_LONG_MODE_CLIP);
-    widget->profile_label = create_portrait_label(widget->obj, 4, 99, 60, 11,
-                                                  &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                  LV_LABEL_LONG_MODE_CLIP);
-    widget->layer_heading_label = create_portrait_label(
-        widget->obj, 4, 130, 60, 11, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-        LV_LABEL_LONG_MODE_CLIP);
-    widget->layer_label = create_portrait_label(widget->obj, 4, 143, 60, 14,
-                                                &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                LV_LABEL_LONG_MODE_CLIP);
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    init_canvas_obj(widget->portrait_canvas, widget->portrait_buf, NICE_VIEW_HID_PORTRAIT_WIDTH,
+                    NICE_VIEW_HID_PORTRAIT_HEIGHT);
+    lv_obj_add_flag(widget->portrait_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
@@ -441,8 +392,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     init_root_obj(widget->obj);
 
-    init_canvas(widget);
-    init_labels(widget);
+    init_canvases(widget);
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();

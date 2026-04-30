@@ -25,11 +25,14 @@
 #define CANVAS_BUF_SIZE                                                                            \
     LV_CANVAS_BUF_SIZE(NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT,                   \
                        LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), LV_DRAW_BUF_STRIDE_ALIGN)
+#define PORTRAIT_CANVAS_BUF_SIZE                                                                  \
+    LV_CANVAS_BUF_SIZE(NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,               \
+                       LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), LV_DRAW_BUF_STRIDE_ALIGN)
 
 #define LVGL_BACKGROUND                                                                            \
-    (IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_hex(0xA3A3A3) : lv_color_hex(0x0C0C0C))
+    (IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_white() : lv_color_black())
 #define LVGL_FOREGROUND                                                                            \
-    (IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_hex(0x0C0C0C) : lv_color_hex(0xA3A3A3))
+    (IS_ENABLED(CONFIG_NICE_VIEW_HID_INVERTED) ? lv_color_black() : lv_color_white())
 
 struct status_state {
     uint8_t battery;
@@ -62,13 +65,12 @@ struct battery_status_state {
 };
 
 void init_root_obj(lv_obj_t *obj);
-lv_obj_t *create_portrait_label(lv_obj_t *parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
-                                lv_coord_t h, const lv_font_t *font, lv_text_align_t align,
-                                lv_label_long_mode_t long_mode);
-void set_label_text_if_changed(lv_obj_t *label, const char *text);
-void set_label_hidden(lv_obj_t *label, bool hidden);
+void init_canvas_obj(lv_obj_t *canvas, uint8_t *buf, lv_coord_t w, lv_coord_t h);
+void rotate_portrait_canvas(lv_obj_t *portrait_canvas, lv_obj_t *display_canvas);
 
 void draw_status_background(lv_obj_t *canvas);
+void draw_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h,
+               const lv_font_t *font, lv_text_align_t align, const char *text);
 void draw_battery(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
                   const struct status_state *state);
 void draw_ble_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, bool bonded, bool connected);

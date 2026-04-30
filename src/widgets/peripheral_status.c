@@ -38,54 +38,42 @@ static bool raw_hid_ready(const struct status_state *state) {
 #endif
 }
 
-static void draw_peripheral_canvas(struct zmk_widget_status *widget) {
-    draw_status_background(widget->canvas);
-    draw_battery(widget->canvas, 4, 6, &widget->state);
-    draw_ble_icon(widget->canvas, 52, 4, true, widget->state.connected);
-
-    if (widget->state.connected && raw_hid_ready(&widget->state)) {
-        draw_play_icon(widget->canvas, 56, 29);
-    }
-}
-
-static void update_peripheral_labels(struct zmk_widget_status *widget) {
-    const bool split_ready = widget->state.connected;
-    const bool hid_ready = split_ready && raw_hid_ready(&widget->state);
-
-    set_label_hidden(widget->fallback_connect_label, split_ready ? hid_ready : true);
-    set_label_hidden(widget->fallback_raw_hid_label, split_ready ? hid_ready : true);
-    set_label_hidden(widget->title_label, split_ready && !hid_ready);
-    set_label_hidden(widget->artist_label, split_ready && !hid_ready);
-    set_label_hidden(widget->state_label, split_ready && !hid_ready);
-
-    if (!split_ready) {
-        set_label_hidden(widget->title_label, false);
-        set_label_hidden(widget->artist_label, false);
-        set_label_hidden(widget->state_label, false);
-        set_label_text_if_changed(widget->title_label, "Peripheral");
-        set_label_text_if_changed(widget->artist_label, "Waiting link");
-        set_label_text_if_changed(widget->state_label, "Split offline");
+static void draw_peripheral_media(lv_obj_t *canvas, const struct status_state *state) {
+    if (!state->connected) {
+        draw_text(canvas, 4, 28, 60, 18, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER,
+                  "Peripheral");
+        draw_text(canvas, 4, 50, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+                  "Waiting link");
+        draw_text(canvas, 4, 68, 60, 12, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+                  "Split offline");
         return;
     }
 
-    if (!hid_ready) {
-        set_label_text_if_changed(widget->fallback_connect_label, "Connect");
-        set_label_text_if_changed(widget->fallback_raw_hid_label, "RAW HID");
+    if (!raw_hid_ready(state)) {
+        draw_text(canvas, 4, 34, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+                  "Connect");
+        draw_text(canvas, 4, 51, 60, 24, &lv_font_montserrat_20, LV_TEXT_ALIGN_CENTER,
+                  "RAW HID");
         return;
     }
 
-    set_label_text_if_changed(widget->title_label,
-                              widget->state.media_title[0] != '\0' ? widget->state.media_title
-                                                                    : "No title");
-    set_label_text_if_changed(widget->artist_label,
-                              widget->state.media_artist[0] != '\0' ? widget->state.media_artist
-                                                                     : "No artist");
-    set_label_text_if_changed(widget->state_label, "Playing");
+    draw_text(canvas, 4, 28, 60, 18, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER,
+              state->media_title[0] != '\0' ? state->media_title : "No title");
+    draw_text(canvas, 4, 50, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
+              state->media_artist[0] != '\0' ? state->media_artist : "No artist");
+    draw_text(canvas, 4, 68, 60, 12, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER, "Playing");
+    draw_play_icon(canvas, 56, 29);
 }
 
 static void refresh_widget(struct zmk_widget_status *widget) {
-    draw_peripheral_canvas(widget);
-    update_peripheral_labels(widget);
+    lv_obj_t *canvas = widget->portrait_canvas;
+
+    draw_status_background(canvas);
+    draw_battery(canvas, 4, 6, &widget->state);
+    draw_ble_icon(canvas, 52, 4, true, widget->state.connected);
+    draw_peripheral_media(canvas, &widget->state);
+
+    rotate_portrait_canvas(widget->portrait_canvas, widget->display_canvas);
 }
 
 static void set_battery_status(struct zmk_widget_status *widget,
@@ -180,7 +168,7 @@ static void media_title_update_cb(struct media_title_notification title) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_title, title.value);
-        update_peripheral_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -200,7 +188,7 @@ static void media_artist_update_cb(struct media_artist_notification artist) {
     struct zmk_widget_status *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         copy_text_field(widget->state.media_artist, artist.value);
-        update_peripheral_labels(widget);
+        refresh_widget(widget);
     }
 }
 
@@ -210,37 +198,15 @@ ZMK_SUBSCRIPTION(widget_media_artist, media_artist_notification);
 
 #endif
 
-static void init_canvas(struct zmk_widget_status *widget) {
-    widget->canvas = lv_canvas_create(widget->obj);
-    lv_obj_remove_style_all(widget->canvas);
-    lv_obj_set_size(widget->canvas, NICE_VIEW_HID_SCREEN_WIDTH, NICE_VIEW_HID_SCREEN_HEIGHT);
-    lv_obj_set_pos(widget->canvas, 0, 0);
-    lv_canvas_set_buffer(widget->canvas, widget->canvas_buf, NICE_VIEW_HID_SCREEN_WIDTH,
-                         NICE_VIEW_HID_SCREEN_HEIGHT, CANVAS_COLOR_FORMAT);
-    lv_obj_move_to_index(widget->canvas, 0);
-}
+static void init_canvases(struct zmk_widget_status *widget) {
+    widget->display_canvas = lv_canvas_create(widget->obj);
+    init_canvas_obj(widget->display_canvas, widget->display_buf, NICE_VIEW_HID_SCREEN_WIDTH,
+                    NICE_VIEW_HID_SCREEN_HEIGHT);
 
-static void init_labels(struct zmk_widget_status *widget) {
-    lv_label_long_mode_t media_long_mode =
-        IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL) ? LV_LABEL_LONG_MODE_SCROLL_CIRCULAR
-                                                      : LV_LABEL_LONG_MODE_CLIP;
-
-    widget->title_label = create_portrait_label(widget->obj, 4, 28, 60, 18,
-                                                &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER,
-                                                media_long_mode);
-    widget->artist_label = create_portrait_label(widget->obj, 4, 50, 60, 14,
-                                                 &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                 media_long_mode);
-    widget->state_label = create_portrait_label(widget->obj, 4, 68, 60, 12,
-                                                &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-                                                LV_LABEL_LONG_MODE_CLIP);
-
-    widget->fallback_connect_label = create_portrait_label(
-        widget->obj, 4, 34, 60, 14, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER,
-        LV_LABEL_LONG_MODE_CLIP);
-    widget->fallback_raw_hid_label = create_portrait_label(
-        widget->obj, 4, 51, 60, 24, &lv_font_montserrat_20, LV_TEXT_ALIGN_CENTER,
-        LV_LABEL_LONG_MODE_CLIP);
+    widget->portrait_canvas = lv_canvas_create(widget->obj);
+    init_canvas_obj(widget->portrait_canvas, widget->portrait_buf, NICE_VIEW_HID_PORTRAIT_WIDTH,
+                    NICE_VIEW_HID_PORTRAIT_HEIGHT);
+    lv_obj_add_flag(widget->portrait_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
@@ -248,8 +214,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
     init_root_obj(widget->obj);
 
-    init_canvas(widget);
-    init_labels(widget);
+    init_canvases(widget);
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
