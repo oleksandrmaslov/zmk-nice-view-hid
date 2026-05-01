@@ -198,77 +198,91 @@ static void canvas_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_color
     lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
 }
 
+#define ELEMENTAL_BATTERY_SOURCE_WIDTH 11
+#define ELEMENTAL_BATTERY_X 4
+#define ELEMENTAL_BATTERY_Y 6
+
+static void battery_set_px(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t source_x,
+                           lv_coord_t source_y, lv_color_t color) {
+    canvas_set_px(canvas, x + source_y, y + (ELEMENTAL_BATTERY_SOURCE_WIDTH - 1 - source_x),
+                  color);
+}
+
+static void battery_draw_rect(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t source_x,
+                              lv_coord_t source_y, lv_coord_t w, lv_coord_t h,
+                              lv_color_t color) {
+    for (lv_coord_t dy = 0; dy < h; dy++) {
+        for (lv_coord_t dx = 0; dx < w; dx++) {
+            battery_set_px(canvas, x, y, source_x + dx, source_y + dy, color);
+        }
+    }
+}
+
 /*
- * Vertical battery glyph and lightning bolt — taken verbatim from
- * kevinpastor/nice-view-elemental (MIT). Origin (x, y) corresponds to
- * the top-left of the case; visible art occupies (x..x+10, y..y+23).
+ * Battery pixels come from nice-view-elemental's vertical 11x24 glyph. The
+ * module's layout is authored in portrait coordinates, so draw those pixels
+ * rotated counter-clockwise into a 24x11 battery with the terminal on the right.
  */
 static void draw_battery_outline(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+    battery_draw_rect(canvas, x, y, 10, 2, 1, 19, LVGL_FOREGROUND);
+    battery_draw_rect(canvas, x, y, 2, 22, 7, 1, LVGL_FOREGROUND);
+    battery_draw_rect(canvas, x, y, 0, 2, 1, 19, LVGL_FOREGROUND);
+    battery_draw_rect(canvas, x, y, 2, 0, 7, 1, LVGL_FOREGROUND);
 
-    canvas_draw_rect(canvas, x + 10, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y + 22, 7, 1, &rect_dsc);
-    canvas_draw_rect(canvas, x, y + 2, 1, 19, &rect_dsc);
-    canvas_draw_rect(canvas, x + 2, y, 7, 1, &rect_dsc);
+    battery_set_px(canvas, x, y, 9, 1, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 9, 21, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 1, 21, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 1, 1, LVGL_FOREGROUND);
 
-    canvas_set_px(canvas, x + 9, y + 1, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 9, y + 21, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 21, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 1, y + 1, LVGL_FOREGROUND);
-
-    canvas_draw_rect(canvas, x + 4, y + 23, 3, 1, &rect_dsc);
+    battery_draw_rect(canvas, x, y, 4, 23, 3, 1, LVGL_FOREGROUND);
 }
 
 static void draw_battery_lightning_bolt(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
-    canvas_set_px(canvas, x + 8, y + 11, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 8, y + 13, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 8, 11, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 8, 12, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 8, 13, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 7, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 7, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 7, y + 12, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 7, 10, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 7, 11, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 7, 12, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 6, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 6, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 6, y + 12, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 6, 9, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 6, 10, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 6, 11, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 6, 12, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 5, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 5, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 5, y + 13, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 5, 9, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 5, 10, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 5, 11, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 5, 12, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 5, 13, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 4, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 4, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 12, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 4, y + 13, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 4, 10, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 4, 11, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 4, 12, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 4, 13, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 3, y + 10, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 3, y + 11, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 3, y + 12, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 3, 10, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 3, 11, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 3, 12, LVGL_BACKGROUND);
 
-    canvas_set_px(canvas, x + 2, y + 9, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 10, LVGL_FOREGROUND);
-    canvas_set_px(canvas, x + 2, y + 11, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 2, 9, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 2, 10, LVGL_FOREGROUND);
+    battery_set_px(canvas, x, y, 2, 11, LVGL_BACKGROUND);
 }
 
 static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y,
                                       uint8_t level, bool charging) {
-    lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-
     draw_battery_outline(canvas, x, y);
 
     uint8_t clamped_level = level > 100 ? 100 : level;
     const uint8_t height = (19 * clamped_level) / 100;
-    canvas_draw_rect(canvas, x + 2, y + 2, 7, height, &rect_dsc);
+    battery_draw_rect(canvas, x, y, 2, 2, 7, height, LVGL_FOREGROUND);
 
-    canvas_set_px(canvas, x + 8, y + 2, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 8, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 20, LVGL_BACKGROUND);
-    canvas_set_px(canvas, x + 2, y + 2, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 8, 2, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 8, 20, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 2, 20, LVGL_BACKGROUND);
+    battery_set_px(canvas, x, y, 2, 2, LVGL_BACKGROUND);
 
     if (charging) {
         draw_battery_lightning_bolt(canvas, x, y);
@@ -276,7 +290,8 @@ static void draw_elemental_battery_at(lv_obj_t *canvas, lv_coord_t x, lv_coord_t
 }
 
 void draw_battery(lv_obj_t *canvas, const struct status_state *state) {
-    draw_elemental_battery_at(canvas, 4, 3, state->battery, state->charging);
+    draw_elemental_battery_at(canvas, ELEMENTAL_BATTERY_X, ELEMENTAL_BATTERY_Y, state->battery,
+                              state->charging);
 }
 
 void draw_elemental_bluetooth_logo(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {

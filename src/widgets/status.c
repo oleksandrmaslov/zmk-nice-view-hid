@@ -54,6 +54,12 @@ struct layer_status_state {
     const char *label;
 };
 
+#define OUTPUT_ICON_X 52
+#define OUTPUT_ICON_Y 3
+#define OUTPUT_PROFILE_X 36
+#define OUTPUT_PROFILE_Y 4
+#define OUTPUT_PROFILE_WIDTH 14
+
 static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
@@ -74,7 +80,7 @@ static void draw_profile_dot(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, uint8
     }
 }
 
-/* BT / USB indicator with profile number to the left, à la nice-view-elemental */
+/* BT / USB indicator with the BLE profile number aligned left of the BT icon. */
 static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *state) {
     if (state->selected_endpoint.transport == ZMK_TRANSPORT_USB) {
         draw_elemental_usb_logo(canvas, 46, 7);
@@ -83,25 +89,22 @@ static void draw_output_indicator(lv_obj_t *canvas, const struct status_state *s
 
     if (state->active_profile_bonded) {
         if (state->active_profile_connected) {
-            draw_elemental_bluetooth_logo(canvas, 52, 3);
+            draw_elemental_bluetooth_logo(canvas, OUTPUT_ICON_X, OUTPUT_ICON_Y);
         } else {
-            draw_elemental_bluetooth_logo_outlined(canvas, 52, 3);
+            draw_elemental_bluetooth_logo_outlined(canvas, OUTPUT_ICON_X, OUTPUT_ICON_Y);
         }
     } else {
-        draw_elemental_bluetooth_searching(canvas, 52, 3);
+        draw_elemental_bluetooth_searching(canvas, OUTPUT_ICON_X, OUTPUT_ICON_Y);
     }
 
-    /*
-     * Profile number (1..5) — placed below the BT icon in portrait so it lands
-     * to the LEFT of the BT icon on the rotated 160×68 display, matching the
-     * placement used by kevinpastor/nice-view-elemental.
-     */
+    /* Profile number (1..5), right-aligned in the slot before the BT icon. */
     lv_draw_label_dsc_t num_dsc;
     init_label_dsc(&num_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT);
     char digit[2] = {(char)('1' + MIN(state->active_profile_index,
                                       (uint8_t)(NICE_VIEW_HID_PROFILE_COUNT - 1))),
                      '\0'};
-    canvas_draw_text(canvas, 52, 22, 12, &num_dsc, digit);
+    canvas_draw_text(canvas, OUTPUT_PROFILE_X, OUTPUT_PROFILE_Y, OUTPUT_PROFILE_WIDTH, &num_dsc,
+                     digit);
 }
 
 /* ---------- Layout name (from comma-separated CONFIG_NICE_VIEW_HID_LAYOUTS) ---------- */
@@ -145,13 +148,9 @@ static void draw_status(struct zmk_widget_status *widget) {
 
     fill_canvas(canvas);
 
-    /*
-     * Battery is the 11×24 vertical glyph from nice-view-elemental, anchored at
-     * portrait (4, 3). After the portrait → 160×68 rotation it lands as a
-     * 24-wide × 11-tall HORIZONTAL battery near the right edge of the display.
-     */
+    /* Battery is drawn horizontally in the portrait layout at the top-left. */
     draw_battery(canvas, state);
-    /* BT/USB anchored at portrait (52, 3) */
+    /* BT/USB and profile digit share the top-right header slot. */
     draw_output_indicator(canvas, state);
 
     /* middle band — y ≈ 28..92 */
