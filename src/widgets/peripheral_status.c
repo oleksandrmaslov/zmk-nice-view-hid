@@ -59,6 +59,59 @@ static void fill_canvas(lv_obj_t *canvas) {
     lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 }
 
+static bool is_text_pixel(lv_color32_t px) {
+    const uint8_t fg = lv_color_luminance(LVGL_FOREGROUND);
+    const uint8_t bg = lv_color_luminance(LVGL_BACKGROUND);
+    const uint8_t threshold = ((uint16_t)fg + bg) / 2;
+    const uint8_t value = px.red;
+
+    return fg > bg ? value > threshold : value < threshold;
+}
+
+static void draw_sideways_text(struct zmk_widget_status *widget, lv_coord_t x, lv_coord_t y,
+                               lv_coord_t axial_max, lv_color_t color,
+                               lv_draw_label_dsc_t *dsc, const char *txt) {
+    if (txt == NULL || txt[0] == '\0') {
+        return;
+    }
+
+    fill_canvas(widget->text_canvas);
+
+    canvas_draw_text(widget->text_canvas, 0, 0, NICE_VIEW_HID_TEXT_CANVAS_WIDTH, dsc, txt);
+
+    const lv_coord_t copy_w = MIN(axial_max, NICE_VIEW_HID_TEXT_CANVAS_WIDTH);
+    lv_coord_t min_y = NICE_VIEW_HID_TEXT_CANVAS_HEIGHT;
+    lv_coord_t max_y = -1;
+
+    for (lv_coord_t sy = 0; sy < NICE_VIEW_HID_TEXT_CANVAS_HEIGHT; sy++) {
+        for (lv_coord_t sx = 0; sx < copy_w; sx++) {
+            if (is_text_pixel(lv_canvas_get_px(widget->text_canvas, sx, sy))) {
+                min_y = MIN(min_y, sy);
+                max_y = MAX(max_y, sy);
+            }
+        }
+    }
+
+    if (max_y < min_y) {
+        return;
+    }
+
+    for (lv_coord_t sy = min_y; sy <= max_y; sy++) {
+        for (lv_coord_t sx = 0; sx < copy_w; sx++) {
+            if (!is_text_pixel(lv_canvas_get_px(widget->text_canvas, sx, sy))) {
+                continue;
+            }
+
+            const lv_coord_t dx = x + (max_y - sy);
+            const lv_coord_t dy = y + sx;
+            if (dx >= 0 && dx < NICE_VIEW_HID_PORTRAIT_WIDTH && dy >= 0 &&
+                dy < NICE_VIEW_HID_PORTRAIT_HEIGHT) {
+                lv_canvas_set_px(widget->portrait_canvas, dx, dy, color, LV_OPA_COVER);
+            }
+        }
+    }
+}
+
 static void draw_play_icon(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y) {
     /* small play chevron, 5×6 — matches mdi:play sketch in references/Peripheral.svg */
     lv_draw_rect_dsc_t fg;
@@ -152,9 +205,9 @@ static bool scroll_allowed(const struct status_state *state) {
 #endif
 }
 
-static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_coord_t axial_max,
-                              const lv_font_t *font, lv_color_t color, const char *txt,
-                              uint16_t step, bool may_scroll) {
+static void draw_marquee_text(struct zmk_widget_status *widget, lv_coord_t x, lv_coord_t y,
+                              lv_coord_t axial_max, const lv_font_t *font, lv_color_t color,
+                              const char *txt, uint16_t step, bool may_scroll) {
     lv_draw_label_dsc_t dsc;
     init_label_dsc(&dsc, color, font, LV_TEXT_ALIGN_LEFT);
     /*
@@ -168,7 +221,7 @@ static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_c
 #if IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
     lv_coord_t full_w = measure_text_width(txt, font);
     if (!may_scroll || full_w <= axial_max) {
-        canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, txt);
+        draw_sideways_text(widget, x, y, axial_max, color, &dsc, txt);
         return;
     }
 
@@ -180,33 +233,33 @@ static void draw_marquee_text(lv_obj_t *canvas, lv_coord_t x, lv_coord_t y, lv_c
     if (skip > total_chars) skip = total_chars;
 
     const char *windowed = utf8_advance_chars(txt, skip);
-    canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, windowed);
+    draw_sideways_text(widget, x, y, axial_max, color, &dsc, windowed);
 #else
     ARG_UNUSED(step);
     ARG_UNUSED(may_scroll);
-    ARG_UNUSED(axial_max);
     /* Static mode: rely on canvas clipping rather than wrapping. */
-    canvas_draw_rotated_text(canvas, x, y, LV_COORD_MAX, 900, &dsc, txt);
+    draw_sideways_text(widget, x, y, axial_max, color, &dsc, txt);
 #endif
 }
 
-static void draw_media(lv_obj_t *canvas, const struct status_state *state, uint16_t step) {
+static void draw_media(struct zmk_widget_status *widget, const struct status_state *state,
+                       uint16_t step) {
     const char *title = fallback_title(state);
     const char *artist = fallback_artist(state);
 
     bool may_scroll = scroll_allowed(state);
 
     /* play indicator + status (always show — fall back to "Offline" when the link is down) */
-    draw_play_icon(canvas, 58, 30);
+    draw_play_icon(widget->portrait_canvas, 58, 30);
     lv_draw_label_dsc_t status_dsc;
     init_label_dsc(&status_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT);
     status_dsc.flag |= LV_TEXT_FLAG_EXPAND;
-    canvas_draw_rotated_text(canvas, 54, 39, LV_COORD_MAX, 900, &status_dsc,
-                             state->connected ? "Playing" : "Offline");
+    draw_sideways_text(widget, 54, 39, MEDIA_AXIAL_LENGTH, LVGL_FOREGROUND, &status_dsc,
+                       state->connected ? "Playing" : "Offline");
 
-    draw_marquee_text(canvas, 4, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_14,
+    draw_marquee_text(widget, 4, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_14,
                       LVGL_FOREGROUND, artist, step, may_scroll);
-    draw_marquee_text(canvas, 21, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_18,
+    draw_marquee_text(widget, 21, MEDIA_AXIAL_START, MEDIA_AXIAL_LENGTH, &lv_font_montserrat_18,
                       LVGL_FOREGROUND, title, step, may_scroll);
 }
 
@@ -214,9 +267,9 @@ static void redraw_widget(struct zmk_widget_status *widget) {
     fill_canvas(widget->portrait_canvas);
     draw_header(widget->portrait_canvas, &widget->state);
 #if IS_ENABLED(CONFIG_RAW_HID) && IS_ENABLED(CONFIG_NICE_VIEW_HID_MEDIA_SCROLL)
-    draw_media(widget->portrait_canvas, &widget->state, media_scroll_step);
+    draw_media(widget, &widget->state, media_scroll_step);
 #else
-    draw_media(widget->portrait_canvas, &widget->state, 0);
+    draw_media(widget, &widget->state, 0);
 #endif
 
     rotate_portrait_canvas(widget->portrait_cbuf, widget->screen_cbuf);
@@ -392,6 +445,11 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_canvas_set_buffer(widget->portrait_canvas, widget->portrait_cbuf,
                          NICE_VIEW_HID_PORTRAIT_WIDTH, NICE_VIEW_HID_PORTRAIT_HEIGHT,
                          CANVAS_COLOR_FORMAT);
+
+    widget->text_canvas = lv_canvas_create(widget->obj);
+    lv_obj_set_pos(widget->text_canvas, -NICE_VIEW_HID_TEXT_CANVAS_WIDTH - 1, 0);
+    lv_canvas_set_buffer(widget->text_canvas, widget->text_cbuf, NICE_VIEW_HID_TEXT_CANVAS_WIDTH,
+                         NICE_VIEW_HID_TEXT_CANVAS_HEIGHT, CANVAS_COLOR_FORMAT);
 
     widget->screen_canvas = lv_canvas_create(widget->obj);
     lv_obj_align(widget->screen_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
