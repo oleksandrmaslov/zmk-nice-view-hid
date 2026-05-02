@@ -171,18 +171,18 @@ static void draw_status(struct zmk_widget_status *widget) {
         /* language: globe icon @ (4, 60) + layout text @ (18, 60) */
         char layout[10] = {};
         get_layout_text(state->layout, layout, sizeof(layout));
-        draw_language_icon(canvas, 4, 60);
+        draw_language_icon(canvas, 4, 62);
         canvas_draw_text(canvas, 18, 60, 46, &label_14_left, layout);
 
         /* volume: composite speaker icon @ (4, 78) + value @ (22, 76) */
         char volume[5] = {};
         snprintf(volume, sizeof(volume), "%u%%", state->volume);
-        draw_volume_icon(canvas, 4, 78, state->volume);
-        canvas_draw_text(canvas, 22, 76, 42, &label_14_left, volume);
+        draw_volume_icon(canvas, 4, 80, state->volume);
+        canvas_draw_text(canvas, 18, 76, 42, &label_14_left, volume);
     } else {
         /* left-aligned "Connect / RAW HID" prompt — replaces middle band */
-        canvas_draw_text(canvas, 4, 44, 60, &label_16_left, "Connect");
-        canvas_draw_text(canvas, 4, 64, 60, &label_16_left, "RAW HID");
+        canvas_draw_text(canvas, 4, 30, 68, &label_14_left, "Connect");
+        canvas_draw_text(canvas, 4, 50, 60, &label_16_left, "RAW HID");
     }
 #else
     ARG_UNUSED(label_18);
@@ -191,14 +191,14 @@ static void draw_status(struct zmk_widget_status *widget) {
 #endif
 
     /* profile section */
-    canvas_draw_text(canvas, 4, 101, 60, &label_14_left, "Profile");
+    canvas_draw_text(canvas, 4, 98, 60, &label_14_left, "Profile");
     static const lv_coord_t profile_x[NICE_VIEW_HID_PROFILE_COUNT] = {4, 16, 28, 40, 52};
     for (uint8_t i = 0; i < NICE_VIEW_HID_PROFILE_COUNT; i++) {
-        draw_profile_dot(canvas, profile_x[i], 113, i, state);
+        draw_profile_dot(canvas, profile_x[i], 115, i, state);
     }
 
     /* layer section */
-    canvas_draw_text(canvas, 4, 133, 60, &label_14_left, "Layer");
+    canvas_draw_text(canvas, 4, 127, 60, &label_14_left, "Layer");
     if (state->layer_label == NULL || strlen(state->layer_label) == 0) {
         char text[12] = {};
         snprintf(text, sizeof(text), "Base %u", state->layer_index);
